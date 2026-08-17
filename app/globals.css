@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-fraunces: "Fraunces", serif;
+  --font-inter: "Inter", sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
+}
+
+* {
+  border-color: #DFDCD3;
+}
+
+body {
+  background-color: #F5F4F0;
+  color: #1C1B1F;
+}
+
+/* Dashed tear-line used on ticket-style booking cards */
+.tear-line {
+  background-image: repeating-linear-gradient(
+    to right,
+    #DFDCD3 0,
+    #DFDCD3 6px,
+    transparent 6px,
+    transparent 14px
+  );
+  height: 1px;
+}
+
+.focus-ring {
+  outline: none;
+}
+.focus-ring:focus-visible {
+  outline: 2px solid #1F4E45;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
