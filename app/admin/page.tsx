@@ -10,8 +10,10 @@ import {
   createService,
   deleteService,
   deleteBooking,
+  updateShop,
+  ApiError,
 } from "@/lib/api";
-import { removeToken } from "@/lib/auth";
+import { clearToken } from "@/lib/auth";
 import type { Shop, Booking, Service, BookingStatus } from "@/lib/types";
 
 export default function AdminDashboard() {
@@ -33,6 +35,10 @@ export default function AdminDashboard() {
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
   const [durationMinutes, setDurationMinutes] = useState("30");
+
+  // Autocomplete za adresu
+  const [addressSuggestions, setAddressSuggestions] = useState<any[]>([]);
+  const [isSearchingAddress, setIsSearchingAddress] = useState(false);
 
   // Forma za postavke salona
   const [shopSettings, setShopSettings] = useState({
@@ -70,7 +76,6 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (!selectedShop) return;
 
-    // Popuni postavke podacima izabranog salona
     setShopSettings({
       name: selectedShop.name || "",
       address: selectedShop.address || "",
@@ -102,8 +107,48 @@ export default function AdminDashboard() {
     loadShopData();
   }, [selectedShop]);
 
+  // Funkcija za pretragu adrese na OpenStreetMap (Filtrirano isključivo na Bosnu i Hercegovinu)
+  const handleAddressChange = async (query: string) => {
+    setShopSettings((prev) => ({ ...prev, address: query }));
+
+    if (query.length < 3) {
+      setAddressSuggestions([]);
+      return;
+    }
+
+    setIsSearchingAddress(true);
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&addressdetails=1&countrycodes=ba&accept-language=bs,hr,sr,en`,
+        {
+          headers: {
+            "User-Agent": "SalonBookingApp/1.0",
+          },
+        }
+      );
+      if (!res.ok) throw new Error("Neuspješna pretraga");
+      const data = await res.json();
+      setAddressSuggestions(data);
+    } catch (err) {
+      console.error("Greška pri pretrazi adrese:", err);
+      setAddressSuggestions([]);
+    } finally {
+      setIsSearchingAddress(false);
+    }
+  };
+
+  const selectSuggestion = (item: any) => {
+    setShopSettings((prev) => ({
+      ...prev,
+      address: item.display_name,
+      latitude: item.lat,
+      longitude: item.lon,
+    }));
+    setAddressSuggestions([]);
+  };
+
   const handleLogout = () => {
-    removeToken();
+    clearToken();
     router.push("/admin/login");
   };
 
@@ -195,36 +240,31 @@ export default function AdminDashboard() {
 
     setSavingSettings(true);
     try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`http://127.0.0.1:8000/api/v1/shops/${selectedShop.id}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          name: shopSettings.name,
-          address: shopSettings.address,
-          phone: shopSettings.phone,
-          instagram: shopSettings.instagram,
-          latitude: shopSettings.latitude ? parseFloat(shopSettings.latitude) : null,
-          longitude: shopSettings.longitude ? parseFloat(shopSettings.longitude) : null,
-          theme: shopSettings.theme,
-          accent_color: shopSettings.accent_color,
-          work_start: shopSettings.work_start,
-          work_end: shopSettings.work_end,
-          work_days: shopSettings.work_days,
-        }),
-      });
+      const updatedShop = await updateShop(selectedShop.id, {
+        name: shopSettings.name,
+        address: shopSettings.address,
+        phone: shopSettings.phone,
+        instagram: shopSettings.instagram,
+        latitude: shopSettings.latitude ? parseFloat(shopSettings.latitude) : null,
+        longitude: shopSettings.longitude ? parseFloat(shopSettings.longitude) : null,
+        theme: shopSettings.theme,
+        accent_color: shopSettings.accent_color,
+        work_start: shopSettings.work_start,
+        work_end: shopSettings.work_end,
+        work_days: shopSettings.work_days,
+      } as any);
 
-      if (!res.ok) throw new Error("Greška pri spasavanju postavki");
-
-      const updatedShop = await res.json();
       setSelectedShop(updatedShop);
       setShops((prev) => prev.map((s) => (s.id === updatedShop.id ? updatedShop : s)));
       alert("Postavke salona su uspješno sačuvane!");
     } catch (err: any) {
-      alert(err.message || "Greška pri spasavanju postavki salona.");
+      console.error(err);
+      if (err instanceof ApiError && err.status === 401) {
+        alert("Sesija je istekla (401). Prijavite se ponovo.");
+        router.push("/admin/login");
+      } else {
+        alert(err.message || "Greška pri spasavanju postavki salona.");
+      }
     } finally {
       setSavingSettings(false);
     }
@@ -375,7 +415,7 @@ export default function AdminDashboard() {
             </div>
 
             {filteredBookings.length === 0 ? (
-              <p className="text-gray-500 text-sm py-8 text-center">Nema pronadjene rezervacije.</p>
+              <p className="text-gray-500 text-sm py-8 text-center">Nema pronađene rezervacije.</p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm text-gray-600">
@@ -563,16 +603,38 @@ export default function AdminDashboard() {
                       required
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Adresa Salona</label>
+
+                  {/* ADRESA SA AUTOCOMPLETE PRETRAGOM */}
+                  <div className="relative">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Adresa Salona (Automatska pretraga)</label>
                     <input
                       type="text"
                       value={shopSettings.address}
-                      onChange={(e) => setShopSettings({ ...shopSettings, address: e.target.value })}
+                      onChange={(e) => handleAddressChange(e.target.value)}
                       className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
+                      placeholder="Počnite tipkati adresu ili grad..."
                       required
                     />
+                    {isSearchingAddress && (
+                      <span className="text-xs text-gray-400 mt-1 block">Pretražujem lokacije...</span>
+                    )}
+
+                    {/* PRIKAZ SUGGESTION LISTE */}
+                    {addressSuggestions.length > 0 && (
+                      <ul className="absolute z-50 left-0 right-0 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto mt-1">
+                        {addressSuggestions.map((item, idx) => (
+                          <li
+                            key={idx}
+                            onClick={() => selectSuggestion(item)}
+                            className="px-3 py-2 text-xs hover:bg-gray-100 cursor-pointer border-b last:border-b-0 text-gray-700"
+                          >
+                            📍 {item.display_name}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
+
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Telefon</label>
                     <input
@@ -631,9 +693,9 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {/* Sekcija 3: Lokacija (Koordinate za Mapu) */}
+              {/* Sekcija 3: Lokacija (Koordinate) */}
               <div className="space-y-4 pt-2">
-                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider border-b pb-2">3. Geografska Lokacija (Karta)</h3>
+                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider border-b pb-2">3. Geografska Lokacija (Automatski izabrano)</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Latitude (Širina)</label>
@@ -642,8 +704,8 @@ export default function AdminDashboard() {
                       step="any"
                       value={shopSettings.latitude}
                       onChange={(e) => setShopSettings({ ...shopSettings, latitude: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
-                      placeholder="npr. 43.8563"
+                      className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black bg-gray-50"
+                      placeholder="npr. 44.1311"
                     />
                   </div>
                   <div>
@@ -653,8 +715,8 @@ export default function AdminDashboard() {
                       step="any"
                       value={shopSettings.longitude}
                       onChange={(e) => setShopSettings({ ...shopSettings, longitude: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
-                      placeholder="npr. 18.4131"
+                      className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black bg-gray-50"
+                      placeholder="npr. 18.1226"
                     />
                   </div>
                 </div>
@@ -681,32 +743,31 @@ export default function AdminDashboard() {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Akcentna Boja</label>
-                    <div className="flex gap-2 items-center">
+                    <div className="flex items-center gap-2">
                       <input
                         type="color"
                         value={shopSettings.accent_color}
                         onChange={(e) => setShopSettings({ ...shopSettings, accent_color: e.target.value })}
-                        className="h-9 w-12 rounded border cursor-pointer"
+                        className="h-9 w-12 p-1 border rounded-lg cursor-pointer bg-white"
                       />
                       <input
                         type="text"
                         value={shopSettings.accent_color}
                         onChange={(e) => setShopSettings({ ...shopSettings, accent_color: e.target.value })}
-                        className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black uppercase"
+                        className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
                       />
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Sačuvaj dugme */}
-              <div className="pt-4 border-t">
+              <div className="pt-4">
                 <button
                   type="submit"
                   disabled={savingSettings}
-                  className="px-6 py-2.5 bg-black text-white font-medium rounded-lg text-sm hover:bg-gray-800 transition-colors disabled:opacity-50"
+                  className="px-6 py-2.5 bg-black text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors disabled:opacity-50"
                 >
-                  {savingSettings ? "Spasavanje..." : "Sačuvaj Postavke Salona"}
+                  {savingSettings ? "Sačuvavam..." : "Sačuvaj Postavke"}
                 </button>
               </div>
             </form>

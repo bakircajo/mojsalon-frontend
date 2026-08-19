@@ -6,7 +6,15 @@ import dynamic from "next/dynamic";
 import { getServicesForShop, createBooking, getAvailableSlots } from "@/lib/api";
 import type { Shop, Service } from "@/lib/types";
 
-const ShopMap = dynamic(() => import("@/components/ShopMap"), { ssr: false });
+// Dynamic import bez SSR-a (obavezno za Leaflet mapu)
+const ShopMap = dynamic(() => import("@/components/ShopMap"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-64 bg-zinc-950/50 animate-pulse rounded-2xl border border-zinc-800 flex items-center justify-center text-xs text-zinc-500">
+      Učitavanje mape...
+    </div>
+  ),
+});
 
 const TEAM_MEMBERS = [
   { id: 1, name: "Emina K.", role: "Senior Stylist", image: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=300" },
@@ -112,13 +120,21 @@ export default function ClientShopPage() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-[#09090B] text-white p-4">
         <h1 className="text-3xl font-extrabold mb-2">Salon nije pronađen</h1>
-        <p className="text-zinc-400">Provjerite da li ste unijeli ispravan link ili kontaktirajte vlasnika.</p>
+        <p className="text-zinc-400">Provjerite da li ste unijeli ispravan link ili da li je backend server (FastAPI/Django) pokrenut.</p>
       </div>
     );
   }
 
   const accentColor = shop.accent_color || "#F59E0B";
   const todayStr = new Date().toISOString().split("T")[0];
+
+  // Provjera valjanosti koordinata
+  const hasValidCoords = Boolean(
+    shop.latitude &&
+    shop.longitude &&
+    !isNaN(Number(shop.latitude)) &&
+    !isNaN(Number(shop.longitude))
+  );
 
   return (
     <div className="min-h-screen bg-[#09090B] text-white font-sans">
@@ -352,14 +368,14 @@ export default function ClientShopPage() {
           </div>
         </div>
 
-        {/* Mapa ako postoje koordinate */}
-        {shop.latitude && shop.longitude && (
+        {/* Interaktivna Mapa */}
+        {hasValidCoords && (
           <div className="p-6 bg-zinc-900 border border-zinc-800 rounded-3xl space-y-3">
             <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-400">Lokacija Salona</h3>
-            <p className="text-xs text-zinc-300">{shop.address}</p>
+            <p className="text-xs text-zinc-300">📍 {shop.address}</p>
             <ShopMap
-              latitude={shop.latitude}
-              longitude={shop.longitude}
+              latitude={Number(shop.latitude)}
+              longitude={Number(shop.longitude)}
               shopName={shop.name}
               address={shop.address || ""}
             />

@@ -168,6 +168,29 @@ function ManageShopContent({ shopId }: { shopId: number }) {
               value={formData.instagram}
               onChange={(e) => setFormData({ ...formData, instagram: e.target.value })}
             />
+
+            {/* Polja za koordinate mape */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input
+                id="latitude"
+                label="Geografska širina (Latitude - npr. 43.8563)"
+                type="number"
+                step="any"
+                placeholder="43.8563"
+                value={formData.latitude}
+                onChange={(e) => setFormData({ ...formData, latitude: e.target.value })}
+              />
+              <Input
+                id="longitude"
+                label="Geografska dužina (Longitude - npr. 18.3866)"
+                type="number"
+                step="any"
+                placeholder="18.3866"
+                value={formData.longitude}
+                onChange={(e) => setFormData({ ...formData, longitude: e.target.value })}
+              />
+            </div>
+
             <div>
               <label className="block text-xs font-semibold text-ink mb-1">Boja Akcenta</label>
               <input

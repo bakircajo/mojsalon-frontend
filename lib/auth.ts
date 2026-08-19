@@ -16,3 +16,6 @@ export function clearToken() {
   if (typeof window === "undefined") return;
   localStorage.removeItem(TOKEN_KEY);
 }
+
+// Alias za funkciju čišćenja tokena (spriječava grešku u app/admin/page.tsx)
+export const removeToken = clearToken;

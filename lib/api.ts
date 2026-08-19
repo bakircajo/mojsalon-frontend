@@ -33,7 +33,9 @@ async function request<T>(
 
   if (auth) {
     const token = getToken();
-    if (token) headers.set("Authorization", `Bearer ${token}`);
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
   }
 
   const res = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
@@ -42,9 +44,15 @@ async function request<T>(
     let detail = `Greška ${res.status}`;
     try {
       const data = await res.json();
-      detail = data.detail || detail;
+      console.error("[Backend Error Detail]:", data); // Ispisuje tačnu grešku sa backenda u F12 konzolu
+      if (Array.isArray(data.detail)) {
+        // Ako je FastAPI validation error (422)
+        detail = data.detail.map((err: any) => `${err.loc.join("->")}: ${err.msg}`).join(" | ");
+      } else if (data.detail) {
+        detail = data.detail;
+      }
     } catch {
-      // no-op — response had no JSON body
+      // no-op
     }
     throw new ApiError(detail, res.status);
   }
@@ -87,9 +95,43 @@ export function createShop(payload: ShopCreatePayload) {
 }
 
 export function updateShop(shopId: number, payload: ShopUpdatePayload) {
+  const cleanedPayload: Record<string, any> = {};
+
+  // Šaljemo samo polja koja zapravo imaju neku vrijednost ili su namjerno izmijenjena
+  Object.keys(payload).forEach((key) => {
+    const val = (payload as any)[key];
+    if (val !== undefined) {
+      cleanedPayload[key] = val;
+    }
+  });
+
+  if ("latitude" in cleanedPayload) {
+    cleanedPayload.latitude =
+      cleanedPayload.latitude !== null && cleanedPayload.latitude !== ""
+        ? Number(cleanedPayload.latitude)
+        : null;
+  }
+
+  if ("longitude" in cleanedPayload) {
+    cleanedPayload.longitude =
+      cleanedPayload.longitude !== null && cleanedPayload.longitude !== ""
+        ? Number(cleanedPayload.longitude)
+        : null;
+  }
+
+  if (typeof cleanedPayload.phone === "string") {
+    cleanedPayload.phone = cleanedPayload.phone.trim() || null;
+  }
+  if (typeof cleanedPayload.address === "string") {
+    cleanedPayload.address = cleanedPayload.address.trim() || null;
+  }
+  if (typeof cleanedPayload.instagram === "string") {
+    cleanedPayload.instagram = cleanedPayload.instagram.trim() || null;
+  }
+
   return request<Shop>(
     `/shops/${shopId}`,
-    { method: "PATCH", body: JSON.stringify(payload) },
+    { method: "PATCH", body: JSON.stringify(cleanedPayload) },
     true
   );
 }
@@ -110,7 +152,6 @@ export function getShopBySlug(slug: string) {
   return request<Shop>(`/shops/by-slug/${slug}`);
 }
 
-// Nova funkcija za pretragu salona dok korisnik kuca
 export function searchShops(query: string) {
   return request<Shop[]>(`/shops/search?q=${encodeURIComponent(query)}`);
 }
