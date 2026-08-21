@@ -8,8 +8,12 @@ import {
   getServicesForShop,
   updateBookingStatus,
   createService,
+  updateService,
   deleteService,
   deleteBooking,
+  createStaff,
+  deleteStaff,
+  getStaffForShop,
   updateShop,
   ApiError,
 } from "@/lib/api";
@@ -26,11 +30,16 @@ export default function AdminDashboard() {
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // State za paginaciju rezervacija
+  const [page, setPage] = useState<number>(1);
+  const LIMIT = 10;
+
   // Pretraga i selekcija rezervacija
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
-  // Forma za usluge
+  // Forma za usluge (Dodavanje / Uređivanje)
+  const [editingServiceId, setEditingServiceId] = useState<number | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
@@ -39,6 +48,13 @@ export default function AdminDashboard() {
   // Autocomplete za adresu
   const [addressSuggestions, setAddressSuggestions] = useState<any[]>([]);
   const [isSearchingAddress, setIsSearchingAddress] = useState(false);
+
+  // Unosi za Galeriju i Uposlenike
+  const [galleryInput, setGalleryInput] = useState("");
+  const [staffName, setStaffName] = useState("");
+  const [staffRole, setStaffRole] = useState("");
+  const [staffList, setStaffList] = useState<{ id: number; name: string; role?: string }[]>([]);
+  const [staffSaving, setStaffSaving] = useState(false);
 
   // Forma za postavke salona
   const [shopSettings, setShopSettings] = useState({
@@ -53,6 +69,7 @@ export default function AdminDashboard() {
     work_start: "09:00",
     work_end: "17:00",
     work_days: "Pon-Sub",
+    gallery: [] as string[],
   });
   const [savingSettings, setSavingSettings] = useState(false);
 
@@ -88,16 +105,19 @@ export default function AdminDashboard() {
       work_start: (selectedShop as any).work_start || "09:00",
       work_end: (selectedShop as any).work_end || "17:00",
       work_days: (selectedShop as any).work_days || "Pon-Sub",
+      gallery: (selectedShop as any).gallery || [],
     });
 
     async function loadShopData() {
       try {
-        const [bookingsData, servicesData] = await Promise.all([
-          getShopBookings(selectedShop.id),
-          getServicesForShop(selectedShop.id),
+        const [bookingsData, servicesData, staffData] = await Promise.all([
+          getShopBookings(selectedShop!.id),
+          getServicesForShop(selectedShop!.id),
+          getStaffForShop(selectedShop!.id),
         ]);
         setBookings(bookingsData);
         setServices(servicesData);
+        setStaffList(staffData || []);
         setSelectedIds([]);
       } catch (err) {
         console.error("Greška pri učitavanju podataka salona:", err);
@@ -105,9 +125,8 @@ export default function AdminDashboard() {
     }
 
     loadShopData();
-  }, [selectedShop]);
+  }, [selectedShop?.id, page]);
 
-  // Funkcija za pretragu adrese na OpenStreetMap (Filtrirano isključivo na Bosnu i Hercegovinu)
   const handleAddressChange = async (query: string) => {
     setShopSettings((prev) => ({ ...prev, address: query }));
 
@@ -145,6 +164,54 @@ export default function AdminDashboard() {
       longitude: item.lon,
     }));
     setAddressSuggestions([]);
+  };
+
+  // Upravljanje fotogalerijom
+  const handleAddImage = () => {
+    if (!galleryInput.trim()) return;
+    setShopSettings((prev) => ({
+      ...prev,
+      gallery: [...prev.gallery, galleryInput.trim()],
+    }));
+    setGalleryInput("");
+  };
+
+  const handleRemoveImage = (index: number) => {
+    setShopSettings((prev) => ({
+      ...prev,
+      gallery: prev.gallery.filter((_, i) => i !== index),
+    }));
+  };
+
+  // Upravljanje uposlenicima — direktno preko API-ja, ne kroz shopSettings
+  const handleAddStaff = async () => {
+    if (!staffName.trim() || !selectedShop) return;
+
+    setStaffSaving(true);
+    try {
+      const created = await createStaff({
+        shop_id: selectedShop.id,
+        name: staffName.trim(),
+        role: staffRole.trim() || "Frizer / Barber",
+      });
+      setStaffList((prev) => [...prev, created]);
+      setStaffName("");
+      setStaffRole("");
+    } catch (err) {
+      alert("Greška pri dodavanju uposlenika.");
+    } finally {
+      setStaffSaving(false);
+    }
+  };
+
+  const handleRemoveStaff = async (staffId: number) => {
+    if (!confirm("Da li ste sigurni da želite obrisati ovog uposlenika?")) return;
+    try {
+      await deleteStaff(staffId);
+      setStaffList((prev) => prev.filter((s) => s.id !== staffId));
+    } catch (err) {
+      alert("Greška pri brisanju uposlenika.");
+    }
   };
 
   const handleLogout = () => {
@@ -203,25 +270,50 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleAddService = async (e: React.FormEvent) => {
+  const handleSaveService = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedShop || !title || !price) return;
 
+    const payload = {
+      title,
+      description,
+      price: parseFloat(price),
+      duration_minutes: parseInt(durationMinutes),
+      shop_id: selectedShop.id,
+    };
+
     try {
-      const created = await createService({
-        title,
-        description,
-        price: parseFloat(price),
-        duration_minutes: parseInt(durationMinutes),
-        shop_id: selectedShop.id,
-      });
-      setServices((prev) => [...prev, created]);
+      if (editingServiceId) {
+        const updated = await updateService(editingServiceId, payload);
+        setServices((prev) => prev.map((s) => (s.id === editingServiceId ? updated : s)));
+        setEditingServiceId(null);
+      } else {
+        const created = await createService(payload);
+        setServices((prev) => [...prev, created]);
+      }
       setTitle("");
       setDescription("");
       setPrice("");
+      setDurationMinutes("30");
     } catch (err) {
-      alert("Greška pri kreiranju usluge.");
+      alert("Greška pri spašavanju usluge.");
     }
+  };
+
+  const handleEditServiceClick = (s: Service) => {
+    setEditingServiceId(s.id);
+    setTitle(s.title);
+    setDescription(s.description || "");
+    setPrice(String(s.price));
+    setDurationMinutes(String(s.duration_minutes));
+  };
+
+  const handleCancelServiceEdit = () => {
+    setEditingServiceId(null);
+    setTitle("");
+    setDescription("");
+    setPrice("");
+    setDurationMinutes("30");
   };
 
   const handleDeleteService = async (serviceId: number) => {
@@ -252,6 +344,7 @@ export default function AdminDashboard() {
         work_start: shopSettings.work_start,
         work_end: shopSettings.work_end,
         work_days: shopSettings.work_days,
+        gallery: shopSettings.gallery,
       } as any);
 
       setSelectedShop(updatedShop);
@@ -270,10 +363,11 @@ export default function AdminDashboard() {
     }
   };
 
-  const filteredBookings = bookings.filter((b) =>
-    b.client_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    b.client_phone.includes(searchQuery) ||
-    b.client_email.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredBookings = bookings.filter(
+    (b) =>
+      b.client_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      b.client_phone.includes(searchQuery) ||
+      b.client_email.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   if (loading) {
@@ -324,13 +418,19 @@ export default function AdminDashboard() {
               <select
                 value={selectedShop.id}
                 onChange={(e) => {
-                  const shop = shops.find((s) => s.id === Number(e.target.value));
-                  if (shop) setSelectedShop(shop);
+                  const targetId = Number(e.target.value);
+                  const shop = shops.find((s) => s.id === targetId);
+                  if (shop) {
+                    setSelectedShop({ ...shop });
+                    setPage(1);
+                  }
                 }}
-                className="px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-1 focus:ring-black"
+                className="px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-1 focus:ring-black cursor-pointer"
               >
                 {shops.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
                 ))}
               </select>
             )}
@@ -417,7 +517,7 @@ export default function AdminDashboard() {
             {filteredBookings.length === 0 ? (
               <p className="text-gray-500 text-sm py-8 text-center">Nema pronađene rezervacije.</p>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto space-y-4">
                 <table className="w-full text-left text-sm text-gray-600">
                   <thead className="bg-gray-50 text-gray-700 uppercase text-xs font-semibold">
                     <tr>
@@ -456,9 +556,9 @@ export default function AdminDashboard() {
                         <td className="px-4 py-3">
                           <span
                             className={`px-2.5 py-1 rounded-full text-xs font-medium ${
-                              b.status === "confirmed"
+                              b.status === "CONFIRMED"
                                 ? "bg-green-100 text-green-700"
-                                : b.status === "cancelled"
+                                : b.status === "CANCELLED"
                                 ? "bg-red-100 text-red-700"
                                 : "bg-yellow-100 text-yellow-700"
                             }`}
@@ -468,13 +568,13 @@ export default function AdminDashboard() {
                         </td>
                         <td className="px-4 py-3 text-right space-x-2">
                           <button
-                            onClick={() => handleStatusChange(b.id, "confirmed" as BookingStatus)}
+                            onClick={() => handleStatusChange(b.id, "CONFIRMED" as BookingStatus)}
                             className="px-3 py-1 bg-green-50 text-green-600 hover:bg-green-100 rounded text-xs font-medium"
                           >
                             Potvrdi
                           </button>
                           <button
-                            onClick={() => handleStatusChange(b.id, "cancelled" as BookingStatus)}
+                            onClick={() => handleStatusChange(b.id, "CANCELLED" as BookingStatus)}
                             className="px-3 py-1 bg-red-50 text-red-600 hover:bg-red-100 rounded text-xs font-medium"
                           >
                             Otkaži
@@ -491,6 +591,27 @@ export default function AdminDashboard() {
                     ))}
                   </tbody>
                 </table>
+
+                {/* Navigacija za Paginaciju */}
+                <div className="flex justify-between items-center pt-4 border-t border-gray-100">
+                  <button
+                    disabled={page === 1}
+                    onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
+                    className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-200 transition-colors"
+                  >
+                    ← Prethodna
+                  </button>
+
+                  <span className="text-xs font-medium text-gray-500">Stranica {page}</span>
+
+                  <button
+                    disabled={bookings.length < LIMIT}
+                    onClick={() => setPage((prev) => prev + 1)}
+                    className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-200 transition-colors"
+                  >
+                    Sljedeća →
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -500,8 +621,10 @@ export default function AdminDashboard() {
         {activeTab === "services" && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 h-fit">
-              <h2 className="text-lg font-semibold mb-4 text-gray-900">Dodaj Uslugu</h2>
-              <form onSubmit={handleAddService} className="space-y-4">
+              <h2 className="text-lg font-semibold mb-4 text-gray-900">
+                {editingServiceId ? "Uredi Uslugu" : "Dodaj Uslugu"}
+              </h2>
+              <form onSubmit={handleSaveService} className="space-y-4">
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Naziv usluge</label>
                   <input
@@ -547,12 +670,23 @@ export default function AdminDashboard() {
                     <option value="60">60 min</option>
                   </select>
                 </div>
-                <button
-                  type="submit"
-                  className="w-full py-2.5 bg-black text-white font-medium rounded-lg text-sm hover:bg-gray-800 transition-colors"
-                >
-                  Dodaj Uslugu
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    className="flex-1 py-2.5 bg-black text-white font-medium rounded-lg text-sm hover:bg-gray-800 transition-colors"
+                  >
+                    {editingServiceId ? "Sačuvaj Izmjene" : "Dodaj Uslugu"}
+                  </button>
+                  {editingServiceId && (
+                    <button
+                      type="button"
+                      onClick={handleCancelServiceEdit}
+                      className="px-3 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-lg text-sm hover:bg-gray-200 transition-colors"
+                    >
+                      Odustani
+                    </button>
+                  )}
+                </div>
               </form>
             </div>
 
@@ -567,14 +701,24 @@ export default function AdminDashboard() {
                       <div>
                         <p className="font-medium text-gray-900 text-sm">{s.title}</p>
                         {s.description && <p className="text-xs text-gray-400">{s.description}</p>}
-                        <p className="text-xs text-gray-500 mt-1">{s.duration_minutes} min • {s.price} KM</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {s.duration_minutes} min • {s.price} KM
+                        </p>
                       </div>
-                      <button
-                        onClick={() => handleDeleteService(s.id)}
-                        className="text-xs text-red-600 hover:text-red-800 font-medium px-2 py-1 rounded bg-red-50 hover:bg-red-100"
-                      >
-                        Obriši
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleEditServiceClick(s)}
+                          className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1 rounded bg-blue-50 hover:bg-blue-100 transition-colors"
+                        >
+                          Uredi
+                        </button>
+                        <button
+                          onClick={() => handleDeleteService(s.id)}
+                          className="text-xs text-red-600 hover:text-red-800 font-medium px-2 py-1 rounded bg-red-50 hover:bg-red-100 transition-colors"
+                        >
+                          Obriši
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -591,7 +735,9 @@ export default function AdminDashboard() {
             <form onSubmit={handleSaveSettings} className="space-y-6 max-w-4xl">
               {/* Sekcija 1: Osnovni podaci */}
               <div className="space-y-4">
-                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider border-b pb-2">1. Osnovne Informacije & Kontakt</h3>
+                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider border-b pb-2">
+                  1. Osnovne Informacije & Kontakt
+                </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Naziv Salona</label>
@@ -604,9 +750,10 @@ export default function AdminDashboard() {
                     />
                   </div>
 
-                  {/* ADRESA SA AUTOCOMPLETE PRETRAGOM */}
                   <div className="relative">
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Adresa Salona (Automatska pretraga)</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Adresa Salona (Automatska pretraga)
+                    </label>
                     <input
                       type="text"
                       value={shopSettings.address}
@@ -619,7 +766,6 @@ export default function AdminDashboard() {
                       <span className="text-xs text-gray-400 mt-1 block">Pretražujem lokacije...</span>
                     )}
 
-                    {/* PRIKAZ SUGGESTION LISTE */}
                     {addressSuggestions.length > 0 && (
                       <ul className="absolute z-50 left-0 right-0 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto mt-1">
                         {addressSuggestions.map((item, idx) => (
@@ -660,20 +806,12 @@ export default function AdminDashboard() {
 
               {/* Sekcija 2: Radno Vrijeme & Radni Dani */}
               <div className="space-y-4 pt-2">
-                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider border-b pb-2">2. Radno Vrijeme & Radni Dani</h3>
+                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider border-b pb-2">
+                  2. Radno Vrijeme & Radni Dani
+                </h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Radni Dani</label>
-                    <input
-                      type="text"
-                      value={shopSettings.work_days}
-                      onChange={(e) => setShopSettings({ ...shopSettings, work_days: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
-                      placeholder="npr. Pon-Sub"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Početak Radnog Vremena</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Početak radnog vremena</label>
                     <input
                       type="time"
                       value={shopSettings.work_start}
@@ -681,8 +819,9 @@ export default function AdminDashboard() {
                       className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
                     />
                   </div>
+
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Kraj Radnog Vremena</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Kraj radnog vremena</label>
                     <input
                       type="time"
                       value={shopSettings.work_end}
@@ -690,84 +829,124 @@ export default function AdminDashboard() {
                       className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
                     />
                   </div>
-                </div>
-              </div>
 
-              {/* Sekcija 3: Lokacija (Koordinate) */}
-              <div className="space-y-4 pt-2">
-                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider border-b pb-2">3. Geografska Lokacija (Automatski izabrano)</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Latitude (Širina)</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Radni dani</label>
                     <input
-                      type="number"
-                      step="any"
-                      value={shopSettings.latitude}
-                      onChange={(e) => setShopSettings({ ...shopSettings, latitude: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black bg-gray-50"
-                      placeholder="npr. 44.1311"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Longitude (Dužina)</label>
-                    <input
-                      type="number"
-                      step="any"
-                      value={shopSettings.longitude}
-                      onChange={(e) => setShopSettings({ ...shopSettings, longitude: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black bg-gray-50"
-                      placeholder="npr. 18.1226"
+                      type="text"
+                      value={shopSettings.work_days}
+                      onChange={(e) => setShopSettings({ ...shopSettings, work_days: e.target.value })}
+                      placeholder="Pon-Sub"
+                      className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Sekcija 4: Dizajn i Tema */}
+              {/* Sekcija 3: Fotografije & Uposlenici */}
               <div className="space-y-4 pt-2">
-                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider border-b pb-2">4. Tema i Izgled Javne Stranice</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Tema</label>
-                    <select
-                      value={shopSettings.theme}
-                      onChange={(e) => setShopSettings({ ...shopSettings, theme: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black bg-white"
+                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider border-b pb-2">
+                  3. Galerija Slika & Osoblje
+                </h3>
+
+                {/* Galerija slika */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Dodaj sliku (URL link)</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      value={galleryInput}
+                      onChange={(e) => setGalleryInput(e.target.value)}
+                      placeholder="https://example.com/slika.jpg"
+                      className="flex-1 px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddImage}
+                      className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-medium rounded-lg transition-colors"
                     >
-                      <option value="noir">Noir (Tamna/Crna)</option>
-                      <option value="steel">Steel (Tamno Plava)</option>
-                      <option value="royal">Royal (Svijetlo Plava)</option>
-                      <option value="forest">Forest (Zelena)</option>
-                      <option value="espresso">Espresso (Smeđa)</option>
-                      <option value="velvet">Velvet (Ljubičasta/Siva)</option>
-                    </select>
+                      + Dodaj
+                    </button>
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Akcentna Boja</label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="color"
-                        value={shopSettings.accent_color}
-                        onChange={(e) => setShopSettings({ ...shopSettings, accent_color: e.target.value })}
-                        className="h-9 w-12 p-1 border rounded-lg cursor-pointer bg-white"
-                      />
-                      <input
-                        type="text"
-                        value={shopSettings.accent_color}
-                        onChange={(e) => setShopSettings({ ...shopSettings, accent_color: e.target.value })}
-                        className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
-                      />
+
+                  {shopSettings.gallery.length > 0 && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+                      {shopSettings.gallery.map((url, idx) => (
+                        <div key={idx} className="relative group rounded-lg overflow-hidden border border-gray-200">
+                          <img src={url} alt={`Galerija ${idx}`} className="w-full h-24 object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveImage(idx)}
+                            className="absolute top-1 right-1 bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-80 hover:opacity-100"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
                     </div>
+                  )}
+                </div>
+
+                {/* Uposlenici — sada rade preko pravog /staff API-ja, snima se odmah po kliku, ne čeka glavno dugme */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Dodaj uposlenika</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={staffName}
+                      onChange={(e) => setStaffName(e.target.value)}
+                      placeholder="Ime i prezime"
+                      className="flex-1 px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
+                    />
+                    <input
+                      type="text"
+                      value={staffRole}
+                      onChange={(e) => setStaffRole(e.target.value)}
+                      placeholder="Uloga (npr. Senior Frizer)"
+                      className="flex-1 px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void handleAddStaff()}
+                      disabled={staffSaving}
+                      className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      {staffSaving ? "Dodajem..." : "+ Dodaj"}
+                    </button>
                   </div>
+
+                  {staffList.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      {staffList.map((person) => (
+                        <div
+                          key={person.id}
+                          className="flex items-center gap-2 bg-gray-100 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700"
+                        >
+                          <span>
+                            <strong>{person.name}</strong> ({person.role})
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => void handleRemoveStaff(person.id)}
+                            className="text-red-500 hover:text-red-700 font-bold"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
-              <div className="pt-4">
+              {/* Dugme za spasavanje */}
+              <div className="pt-4 border-t">
                 <button
                   type="submit"
                   disabled={savingSettings}
-                  className="px-6 py-2.5 bg-black text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors disabled:opacity-50"
+                  className="px-6 py-2.5 bg-black text-white font-medium text-sm rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
                 >
-                  {savingSettings ? "Sačuvavam..." : "Sačuvaj Postavke"}
+                  {savingSettings ? "Sačuvavam..." : "Sačuvaj Postavke Salona"}
                 </button>
               </div>
             </form>

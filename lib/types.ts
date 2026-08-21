@@ -15,7 +15,7 @@ export interface Shop {
   owner_id: number;
   created_at: string;
   // Novi podaci za Onboarding Wizard i Builder
-  slug: string | null;
+  // slug: string; // Vraća se sa backenda
   shop_type: string;
   instagram: string | null;
   theme: string;
@@ -31,29 +31,24 @@ export interface Shop {
   working_hours: any | null;
 }
 
+// -------------------------------------------------------------------
+// 1. KREIRANJE SALONA (Minimalni Payload prema novom DTO-u na backendu)
+// Uklonjen slug i sve postavke dizajna i radnog vremena.
+// -------------------------------------------------------------------
 export interface ShopCreatePayload {
   name: string;
-  description?: string;
-  slug?: string;
+  address: string;
   shop_type?: string;
-  instagram?: string;
-  theme?: string;
-  accent_color?: string;
-  font_family?: string;
-  border_radius?: number;
-  enabled_sections?: string[];
-  // Adresa, koordinate i radno vrijeme
-  address?: string;
-  latitude?: number | null;
-  longitude?: number | null;
-  working_hours?: any;
+  description?: string;
 }
 
+// -------------------------------------------------------------------
+// 2. AŽURIRANJE SALONA (Ostaje sve za postavljanje tema, radnog vremena...)
+// -------------------------------------------------------------------
 export interface ShopUpdatePayload {
   name?: string;
   description?: string;
   is_active?: boolean;
-  slug?: string;
   shop_type?: string;
   instagram?: string;
   theme?: string;
@@ -62,7 +57,6 @@ export interface ShopUpdatePayload {
   border_radius?: number;
   enabled_sections?: string[];
   is_published?: boolean;
-  // Adresa, koordinate i radno vrijeme
   address?: string;
   latitude?: number | null;
   longitude?: number | null;
@@ -100,4 +94,12 @@ export interface BookingCreatePayload {
   start_time: string;
   shop_id: number;
   service_id: number;
+}
+
+export interface Staff {
+  id: number;
+  name: string;
+  role?: string;
+  avatar_url?: string;
+  shop_id?: number;
 }

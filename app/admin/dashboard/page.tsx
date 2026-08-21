@@ -11,7 +11,6 @@ import Card from "@/components/ui/Card";
 import { ApiError, createShop, getMyShops } from "@/lib/api";
 import type { Shop } from "@/lib/types";
 
-// Podrazumijevano radno vrijeme usklađeno sa backend modelom
 const DEFAULT_WORKING_HOURS = {
   monday: { start: "08:00", end: "16:00", is_working: true },
   tuesday: { start: "08:00", end: "16:00", is_working: true },
@@ -38,13 +37,11 @@ function DashboardContent() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
 
-  // --- State za adresu i koordinate ---
   const [address, setAddress] = useState("");
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
   const [suggestions, setSuggestions] = useState<any[]>([]);
 
-  // --- State za radno vrijeme ---
   const [workingHours, setWorkingHours] = useState(DEFAULT_WORKING_HOURS);
 
   const [creating, setCreating] = useState(false);
@@ -71,7 +68,6 @@ function DashboardContent() {
     loadShops();
   }, []);
 
-  // Funkcija za pretragu adrese sa interneta (Nominatim API)
   const handleSearchAddress = async (query: string) => {
     setAddress(query);
     setLatitude(null);
@@ -93,10 +89,9 @@ function DashboardContent() {
           },
         }
       );
-      if (!res.ok) throw new Error("Mrežna greška pri pretrazi");
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        setSuggestions(data);
+      if (res.ok) {
+        const data = await res.json();
+        setSuggestions(Array.isArray(data) ? data : []);
       } else {
         setSuggestions([]);
       }
@@ -113,7 +108,6 @@ function DashboardContent() {
     setSuggestions([]);
   };
 
-  // Helper za izmjenu radnog vremena pojedinog dana
   const handleWorkingHourChange = (day: string, field: string, value: any) => {
     setWorkingHours((prev: any) => ({
       ...prev,
@@ -133,14 +127,16 @@ function DashboardContent() {
     setCreating(true);
     setError("");
     try {
-      await createShop({
+      const payload: any = {
         name: name.trim(),
         description: description.trim(),
         address: address.trim(),
         latitude,
         longitude,
         working_hours: workingHours,
-      });
+      };
+
+      await createShop(payload);
 
       setName("");
       setDescription("");
@@ -196,7 +192,7 @@ function DashboardContent() {
                   id="shopAddress"
                   label="Adresa (lokacija biznisa)"
                   value={address}
-                  onChange={(e) => handleSearchAddress(e.target.value)}
+                  onChange={(e) => void handleSearchAddress(e.target.value)}
                   placeholder="Unesite adresu (npr. Kralja Tomislava, Mostar)"
                 />
 
@@ -357,7 +353,6 @@ function DashboardContent() {
                     )}
                   </div>
 
-                  {/* DUGME ZA UPRAVLJANJE SALONOM I RADNIM VREMENOM */}
                   <div className="mt-6 pt-4 border-t border-line">
                     <Link
                       href={`/admin/shops/${shop.id}`}
