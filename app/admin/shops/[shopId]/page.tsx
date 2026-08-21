@@ -15,6 +15,7 @@ import {
   deleteService,
   getStaffForShop,
   createStaff,
+  updateStaff,
   deleteStaff,
   updateShopGallery,
 } from "@/lib/api";
@@ -69,6 +70,7 @@ function ManageShopContent({ shopId }: { shopId: number }) {
   });
 
   // State za radnike i galeriju
+  const [editingStaffId, setEditingStaffId] = useState<number | null>(null);
   const [staffForm, setStaffForm] = useState({ name: "", role: "", avatar_url: "" });
   const [staffSaving, setStaffSaving] = useState(false);
   const [gallery, setGallery] = useState<string[]>([]);
@@ -218,29 +220,54 @@ function ManageShopContent({ shopId }: { shopId: number }) {
     }
   };
 
-  // Dodavanje radnika u bazu
-  const handleAddStaff = async (e: React.FormEvent) => {
+  // Dodavanje ili Uređivanje radnika
+  const handleSaveStaff = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!shop || !staffForm.name.trim()) return;
 
     setStaffSaving(true);
     try {
-      const payload = {
-        shop_id: shop.id,
-        name: staffForm.name.trim(),
-        role: staffForm.role.trim() || "Stilista",
-        avatar_url: staffForm.avatar_url.trim() || undefined,
-      };
+      if (editingStaffId) {
+        const payload = {
+          name: staffForm.name.trim(),
+          role: staffForm.role.trim() || "Stilista",
+          avatar_url: staffForm.avatar_url.trim() || undefined,
+        };
+        const updated = await updateStaff(editingStaffId, payload);
+        setStaffList((prev) => prev.map((st) => (st.id === editingStaffId ? updated : st)));
+        setEditingStaffId(null);
+      } else {
+        const payload = {
+          shop_id: shop.id,
+          name: staffForm.name.trim(),
+          role: staffForm.role.trim() || "Stilista",
+          avatar_url: staffForm.avatar_url.trim() || undefined,
+        };
+        const created = await createStaff(payload);
+        setStaffList((prev) => [...prev, created]);
+      }
 
-      const created = await createStaff(payload);
-      setStaffList((prev) => [...prev, created]);
       setStaffForm({ name: "", role: "", avatar_url: "" });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Dogodila se greška.";
-      alert("Greška pri dodavanju radnika: " + msg);
+      alert("Greška pri spašavanju radnika: " + msg);
     } finally {
       setStaffSaving(false);
     }
+  };
+
+  const handleEditStaffClick = (staff: Staff) => {
+    setEditingStaffId(staff.id);
+    setStaffForm({
+      name: staff.name,
+      role: staff.role || "",
+      avatar_url: staff.avatar_url || "",
+    });
+  };
+
+  const handleCancelStaffEdit = () => {
+    setEditingStaffId(null);
+    setStaffForm({ name: "", role: "", avatar_url: "" });
   };
 
   // Brisanje radnika
@@ -249,6 +276,7 @@ function ManageShopContent({ shopId }: { shopId: number }) {
     try {
       await deleteStaff(staffId);
       setStaffList((prev) => prev.filter((st) => st.id !== staffId));
+      if (editingStaffId === staffId) handleCancelStaffEdit();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Dogodila se greška.";
       alert("Greška pri brisanju radnika: " + msg);
@@ -518,8 +546,10 @@ function ManageShopContent({ shopId }: { shopId: number }) {
         {/* TAB 3: UPOSLENICI */}
         {activeTab === "staff" && (
           <Card className="p-6 space-y-4">
-            <h2 className="text-lg font-bold text-ink">Uposlenici (Majstori)</h2>
-            <form onSubmit={handleAddStaff} className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-gray-50 p-4 rounded-lg border border-line">
+            <h2 className="text-lg font-bold text-ink">
+              {editingStaffId ? "Uredi Radnika" : "Dodaj Radnika"}
+            </h2>
+            <form onSubmit={handleSaveStaff} className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-gray-50 p-4 rounded-lg border border-line">
               <Input
                 label="Ime i prezime"
                 value={staffForm.name}
@@ -540,10 +570,15 @@ function ManageShopContent({ shopId }: { shopId: number }) {
                   placeholder="https://..."
                 />
               </div>
-              <div className="sm:col-span-2">
-                <Button type="submit" loading={staffSaving}>
-                  + Sačuvaj Radnika
+              <div className="sm:col-span-2 flex gap-2">
+                <Button type="submit" loading={staffSaving} className="flex-1">
+                  {editingStaffId ? "Sačuvaj Izmjene" : "+ Sačuvaj Radnika"}
                 </Button>
+                {editingStaffId && (
+                  <Button type="button" variant="secondary" onClick={handleCancelStaffEdit}>
+                    Odustani
+                  </Button>
+                )}
               </div>
             </form>
 
@@ -552,7 +587,12 @@ function ManageShopContent({ shopId }: { shopId: number }) {
                 <p className="col-span-full text-xs text-muted italic">Nema dodanih radnika.</p>
               ) : (
                 staffList.map((st) => (
-                  <div key={st.id} className="p-3 bg-white border border-line rounded text-center relative group">
+                  <div
+                    key={st.id}
+                    className={`p-3 bg-white border rounded text-center relative group ${
+                      editingStaffId === st.id ? "border-black ring-1 ring-black" : "border-line"
+                    }`}
+                  >
                     <img
                       src={st.avatar_url || "https://via.placeholder.com/80"}
                       alt={st.name}
@@ -560,13 +600,22 @@ function ManageShopContent({ shopId }: { shopId: number }) {
                     />
                     <h5 className="font-bold text-sm text-ink">{st.name}</h5>
                     <p className="text-xs text-muted">{st.role || "Stilista"}</p>
-                    <button
-                      type="button"
-                      onClick={() => void handleDeleteStaff(st.id)}
-                      className="mt-2 text-[11px] text-red-600 hover:underline block mx-auto"
-                    >
-                      Obriši
-                    </button>
+                    <div className="mt-2 flex justify-center gap-3 text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => handleEditStaffClick(st)}
+                        className="text-blue-600 hover:underline"
+                      >
+                        Uredi
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteStaff(st.id)}
+                        className="text-red-600 hover:underline"
+                      >
+                        Obriši
+                      </button>
+                    </div>
                   </div>
                 ))
               )}

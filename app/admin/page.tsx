@@ -12,6 +12,7 @@ import {
   deleteService,
   deleteBooking,
   createStaff,
+  updateStaff,
   deleteStaff,
   getStaffForShop,
   updateShop,
@@ -51,9 +52,11 @@ export default function AdminDashboard() {
 
   // Unosi za Galeriju i Uposlenike
   const [galleryInput, setGalleryInput] = useState("");
+  const [editingStaffId, setEditingStaffId] = useState<number | null>(null);
   const [staffName, setStaffName] = useState("");
   const [staffRole, setStaffRole] = useState("");
-  const [staffList, setStaffList] = useState<{ id: number; name: string; role?: string }[]>([]);
+  const [staffAvatarUrl, setStaffAvatarUrl] = useState("");
+  const [staffList, setStaffList] = useState<{ id: number; name: string; role?: string; avatar_url?: string }[]>([]);
   const [staffSaving, setStaffSaving] = useState(false);
 
   // Forma za postavke salona
@@ -183,25 +186,51 @@ export default function AdminDashboard() {
     }));
   };
 
-  // Upravljanje uposlenicima — direktno preko API-ja, ne kroz shopSettings
-  const handleAddStaff = async () => {
+  // Upravljanje uposlenicima
+  const handleSaveStaff = async () => {
     if (!staffName.trim() || !selectedShop) return;
 
     setStaffSaving(true);
     try {
-      const created = await createStaff({
-        shop_id: selectedShop.id,
-        name: staffName.trim(),
-        role: staffRole.trim() || "Frizer / Barber",
-      });
-      setStaffList((prev) => [...prev, created]);
+      if (editingStaffId) {
+        const updated = await updateStaff(editingStaffId, {
+          name: staffName.trim(),
+          role: staffRole.trim() || "Frizer / Barber",
+          avatar_url: staffAvatarUrl.trim() || undefined,
+        });
+        setStaffList((prev) => prev.map((s) => (s.id === editingStaffId ? updated : s)));
+        setEditingStaffId(null);
+      } else {
+        const created = await createStaff({
+          shop_id: selectedShop.id,
+          name: staffName.trim(),
+          role: staffRole.trim() || "Frizer / Barber",
+          avatar_url: staffAvatarUrl.trim() || undefined,
+        });
+        setStaffList((prev) => [...prev, created]);
+      }
       setStaffName("");
       setStaffRole("");
+      setStaffAvatarUrl("");
     } catch (err) {
-      alert("Greška pri dodavanju uposlenika.");
+      alert(editingStaffId ? "Greška pri izmjeni uposlenika." : "Greška pri dodavanju uposlenika.");
     } finally {
       setStaffSaving(false);
     }
+  };
+
+  const handleEditStaffClick = (person: { id: number; name: string; role?: string; avatar_url?: string }) => {
+    setEditingStaffId(person.id);
+    setStaffName(person.name);
+    setStaffRole(person.role || "");
+    setStaffAvatarUrl(person.avatar_url || "");
+  };
+
+  const handleCancelStaffEdit = () => {
+    setEditingStaffId(null);
+    setStaffName("");
+    setStaffRole("");
+    setStaffAvatarUrl("");
   };
 
   const handleRemoveStaff = async (staffId: number) => {
@@ -209,6 +238,7 @@ export default function AdminDashboard() {
     try {
       await deleteStaff(staffId);
       setStaffList((prev) => prev.filter((s) => s.id !== staffId));
+      if (editingStaffId === staffId) handleCancelStaffEdit();
     } catch (err) {
       alert("Greška pri brisanju uposlenika.");
     }
@@ -443,7 +473,7 @@ export default function AdminDashboard() {
             </button>
 
             <a
-              href={`/${selectedShop.slug}`}
+              href={`/${selectedShop.slug || selectedShop.id}`}
               target="_blank"
               rel="noreferrer"
               className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors"
@@ -729,8 +759,8 @@ export default function AdminDashboard() {
 
         {/* TAB 3: POSTAVKE SALONA */}
         {activeTab === "settings" && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <h2 className="text-lg font-semibold mb-6 text-gray-900">Postavke Salona: {selectedShop.name}</h2>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-8">
+            <h2 className="text-lg font-semibold text-gray-900">Postavke Salona: {selectedShop.name}</h2>
 
             <form onSubmit={handleSaveSettings} className="space-y-6 max-w-4xl">
               {/* Sekcija 1: Osnovni podaci */}
@@ -759,7 +789,7 @@ export default function AdminDashboard() {
                       value={shopSettings.address}
                       onChange={(e) => handleAddressChange(e.target.value)}
                       className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
-                      placeholder="Počnite tipkati adresu ili grad..."
+                      placeholder="Počnite tipkati adresu..."
                       required
                     />
                     {isSearchingAddress && (
@@ -772,9 +802,9 @@ export default function AdminDashboard() {
                           <li
                             key={idx}
                             onClick={() => selectSuggestion(item)}
-                            className="px-3 py-2 text-xs hover:bg-gray-100 cursor-pointer border-b last:border-b-0 text-gray-700"
+                            className="px-3 py-2 text-xs hover:bg-gray-100 cursor-pointer border-b last:border-0"
                           >
-                            📍 {item.display_name}
+                            {item.display_name}
                           </li>
                         ))}
                       </ul>
@@ -782,36 +812,47 @@ export default function AdminDashboard() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Telefon</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Broj telefona</label>
                     <input
                       type="text"
                       value={shopSettings.phone}
                       onChange={(e) => setShopSettings({ ...shopSettings, phone: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
                       placeholder="+387 61 000 000"
+                      className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
                     />
                   </div>
+
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Instagram (@korisnicko_ime)</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Instagram korisničko ime</label>
                     <input
                       type="text"
                       value={shopSettings.instagram}
                       onChange={(e) => setShopSettings({ ...shopSettings, instagram: e.target.value })}
+                      placeholder="@moj.salon"
                       className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
-                      placeholder="@mojsalon"
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Sekcija 2: Radno Vrijeme & Radni Dani */}
-              <div className="space-y-4 pt-2">
+              {/* Sekcija 2: Radno Vrijeme */}
+              <div className="space-y-4 pt-4">
                 <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider border-b pb-2">
-                  2. Radno Vrijeme & Radni Dani
+                  2. Radno Vrijeme
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Početak radnog vremena</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Radni Dani</label>
+                    <input
+                      type="text"
+                      value={shopSettings.work_days}
+                      onChange={(e) => setShopSettings({ ...shopSettings, work_days: e.target.value })}
+                      placeholder="Pon - Sub"
+                      className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Početak rada</label>
                     <input
                       type="time"
                       value={shopSettings.work_start}
@@ -819,9 +860,8 @@ export default function AdminDashboard() {
                       className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
                     />
                   </div>
-
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Kraj radnog vremena</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Kraj rada</label>
                     <input
                       type="time"
                       value={shopSettings.work_end}
@@ -829,127 +869,162 @@ export default function AdminDashboard() {
                       className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
                     />
                   </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Radni dani</label>
-                    <input
-                      type="text"
-                      value={shopSettings.work_days}
-                      onChange={(e) => setShopSettings({ ...shopSettings, work_days: e.target.value })}
-                      placeholder="Pon-Sub"
-                      className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
-                    />
-                  </div>
                 </div>
               </div>
 
-              {/* Sekcija 3: Fotografije & Uposlenici */}
-              <div className="space-y-4 pt-2">
+              {/* Sekcija 3: Fotogalerija */}
+              <div className="space-y-4 pt-4">
                 <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider border-b pb-2">
-                  3. Galerija Slika & Osoblje
+                  3. Fotogalerija Salona
                 </h3>
-
-                {/* Galerija slika */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Dodaj sliku (URL link)</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="url"
-                      value={galleryInput}
-                      onChange={(e) => setGalleryInput(e.target.value)}
-                      placeholder="https://example.com/slika.jpg"
-                      className="flex-1 px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddImage}
-                      className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-medium rounded-lg transition-colors"
-                    >
-                      + Dodaj
-                    </button>
-                  </div>
-
-                  {shopSettings.gallery.length > 0 && (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-                      {shopSettings.gallery.map((url, idx) => (
-                        <div key={idx} className="relative group rounded-lg overflow-hidden border border-gray-200">
-                          <img src={url} alt={`Galerija ${idx}`} className="w-full h-24 object-cover" />
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveImage(idx)}
-                            className="absolute top-1 right-1 bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-80 hover:opacity-100"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    placeholder="https://example.com/slika.jpg"
+                    value={galleryInput}
+                    onChange={(e) => setGalleryInput(e.target.value)}
+                    className="flex-1 px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddImage}
+                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    + Dodaj sliku
+                  </button>
                 </div>
 
-                {/* Uposlenici — sada rade preko pravog /staff API-ja, snima se odmah po kliku, ne čeka glavno dugme */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Dodaj uposlenika</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={staffName}
-                      onChange={(e) => setStaffName(e.target.value)}
-                      placeholder="Ime i prezime"
-                      className="flex-1 px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
-                    />
-                    <input
-                      type="text"
-                      value={staffRole}
-                      onChange={(e) => setStaffRole(e.target.value)}
-                      placeholder="Uloga (npr. Senior Frizer)"
-                      className="flex-1 px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => void handleAddStaff()}
-                      disabled={staffSaving}
-                      className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
-                    >
-                      {staffSaving ? "Dodajem..." : "+ Dodaj"}
-                    </button>
-                  </div>
-
-                  {staffList.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-3">
-                      {staffList.map((person) => (
-                        <div
-                          key={person.id}
-                          className="flex items-center gap-2 bg-gray-100 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700"
+                {shopSettings.gallery.length > 0 && (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2">
+                    {shopSettings.gallery.map((imgUrl, index) => (
+                      <div key={index} className="relative group rounded-lg overflow-hidden border bg-gray-50 h-24">
+                        <img src={imgUrl} alt={`Galerija ${index}`} className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveImage(index)}
+                          className="absolute top-1 right-1 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
                         >
-                          <span>
-                            <strong>{person.name}</strong> ({person.role})
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => void handleRemoveStaff(person.id)}
-                            className="text-red-500 hover:text-red-700 font-bold"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              {/* Dugme za spasavanje */}
+              {/* Sačuvaj dugme za postavke salona */}
               <div className="pt-4 border-t">
                 <button
                   type="submit"
                   disabled={savingSettings}
-                  className="px-6 py-2.5 bg-black text-white font-medium text-sm rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
+                  className="px-6 py-2.5 bg-black text-white font-medium rounded-lg text-sm hover:bg-gray-800 transition-colors disabled:opacity-50"
                 >
                   {savingSettings ? "Sačuvavam..." : "Sačuvaj Postavke Salona"}
                 </button>
               </div>
             </form>
+
+            {/* Sekcija 4: Upravljanje Uposlenicima (Poseban CRUD) */}
+            <div className="space-y-4 pt-8 border-t max-w-4xl">
+              <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider border-b pb-2">
+                4. Upravljanje Uposlenicima (Osoblje)
+              </h3>
+
+              {/* Forma za dodavanje/uređivanje uposlenika */}
+              <div className="p-4 bg-gray-50 rounded-xl space-y-3">
+                <h4 className="text-xs font-semibold text-gray-700">
+                  {editingStaffId ? "Uredi uposlenika" : "Dodaj novog uposlenika"}
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <input
+                    type="text"
+                    placeholder="Ime i Prezime *"
+                    value={staffName}
+                    onChange={(e) => setStaffName(e.target.value)}
+                    className="px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-1 focus:ring-black"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Uloga (npr. Frizer / Barber)"
+                    value={staffRole}
+                    onChange={(e) => setStaffRole(e.target.value)}
+                    className="px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-1 focus:ring-black"
+                  />
+                  <input
+                    type="url"
+                    placeholder="URL slike / Avatara"
+                    value={staffAvatarUrl}
+                    onChange={(e) => setStaffAvatarUrl(e.target.value)}
+                    className="px-3 py-2 border rounded-lg text-sm bg-white outline-none focus:ring-1 focus:ring-black"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSaveStaff}
+                    disabled={staffSaving || !staffName.trim()}
+                    className="px-4 py-2 bg-black text-white rounded-lg text-xs font-medium hover:bg-gray-800 transition-colors disabled:opacity-50"
+                  >
+                    {staffSaving ? "Spašavam..." : editingStaffId ? "Sačuvaj Izmjene" : "+ Dodaj Uposlenika"}
+                  </button>
+                  {editingStaffId && (
+                    <button
+                      type="button"
+                      onClick={handleCancelStaffEdit}
+                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-xs font-medium hover:bg-gray-300 transition-colors"
+                    >
+                      Odustani
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Lista postojećih uposlenika */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+                {staffList.length === 0 ? (
+                  <p className="text-xs text-gray-400 col-span-2">Nema unesenih uposlenika.</p>
+                ) : (
+                  staffList.map((person) => (
+                    <div
+                      key={person.id}
+                      className="flex items-center justify-between p-3 border rounded-xl bg-white shadow-sm"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center overflow-hidden border">
+                          {person.avatar_url ? (
+                            <img src={person.avatar_url} alt={person.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-xs font-bold text-gray-500">
+                              {person.name.substring(0, 2).toUpperCase()}
+                            </span>
+                          )}
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">{person.name}</p>
+                          <p className="text-xs text-gray-500">{person.role || "Frizer"}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleEditStaffClick(person)}
+                          className="text-xs text-blue-600 hover:text-blue-800 font-medium px-2 py-1 bg-blue-50 hover:bg-blue-100 rounded transition-colors"
+                        >
+                          Uredi
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveStaff(person.id)}
+                          className="text-xs text-red-600 hover:text-red-800 font-medium px-2 py-1 bg-red-50 hover:bg-red-100 rounded transition-colors"
+                        >
+                          Obriši
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           </div>
         )}
       </div>

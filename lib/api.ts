@@ -206,6 +206,12 @@ export function createStaff(payload: { name: string; role?: string; shop_id: num
   return request<Staff>("/staff/", { method: "POST", body: JSON.stringify(payload) }, true);
 }
 
+export function updateStaff(
+  staffId: number,
+  payload: { name?: string; role?: string; avatar_url?: string }
+) {
+  return request<Staff>(`/staff/${staffId}`, { method: "PATCH", body: JSON.stringify(payload) }, true);
+}
 export function deleteStaff(staffId: number) {
   return request<void>(`/staff/${staffId}`, { method: "DELETE" }, true);
 }

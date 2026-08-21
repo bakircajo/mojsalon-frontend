@@ -13,7 +13,7 @@ export default function AdminNav() {
     <header className="border-b border-line bg-white">
       <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
         <Link href="/admin/dashboard" className="font-display text-xl italic text-ink">
-          Termini <span className="text-muted">/ vlasnik</span>
+          brand.ba <span className="text-muted">/ vlasnik</span>
         </Link>
         <nav className="flex items-center gap-6">
           <Link

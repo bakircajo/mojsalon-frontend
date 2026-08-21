@@ -83,6 +83,7 @@ export interface Booking {
   end_time: string;
   shop_id: number;
   service_id: number;
+  staff_id?: number | null;
   status: BookingStatus;
   created_at: string;
 }
@@ -94,6 +95,7 @@ export interface BookingCreatePayload {
   start_time: string;
   shop_id: number;
   service_id: number;
+  staff_id?: number;
 }
 
 export interface Staff {

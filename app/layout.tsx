@@ -22,7 +22,7 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Termini — zakazivanje u salonima",
+  title: "brand.ba — zakazivanje u salonima",
   description: "Pronađite salon, izaberite uslugu i zakažite termin za nekoliko klikova.",
 };
 
