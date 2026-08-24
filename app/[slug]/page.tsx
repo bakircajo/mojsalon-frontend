@@ -57,35 +57,45 @@ export default function ClientShopPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState(false);
-useEffect(() => {
-  if (!rawSlug) return;
-  const slugStr = Array.isArray(rawSlug) ? rawSlug[0] : rawSlug;
 
-  setLoading(true);
+  // Ako salon ima bar jednog radnika, odabir radnika je OBAVEZAN
+  const staffRequired = teamMembers.length > 0;
+  const staffMissing = staffRequired && !selectedStaff;
 
-  getShopBySlug(slugStr)
-    .then(async (shopData: any) => {
-      setShop(shopData);
+  useEffect(() => {
+    if (!rawSlug) return;
+    const slugStr = Array.isArray(rawSlug) ? rawSlug[0] : rawSlug;
 
-      if (shopData?.id) {
-        // Parallelno dohvatanje usluga i radnika preko tvojih API funkcija
-        const [serviceList, staffList] = await Promise.all([
-          getServicesForShop(shopData.id).catch(() => []),
-          getStaffForShop(shopData.id).catch(() => []),
-        ]);
+    setLoading(true);
 
-        setServices(serviceList || []);
-        setTeamMembers(staffList || []);
-      }
-    })
-    .catch((err) => {
-      console.error("Shop error:", err);
-      setShop(null);
-    })
-    .finally(() => setLoading(false));
-}, [rawSlug]);
+    getShopBySlug(slugStr)
+      .then(async (shopData: any) => {
+        setShop(shopData);
+
+        if (shopData?.id) {
+          const [serviceList, staffList] = await Promise.all([
+            getServicesForShop(shopData.id).catch(() => []),
+            getStaffForShop(shopData.id).catch(() => []),
+          ]);
+
+          setServices(serviceList || []);
+          setTeamMembers(staffList || []);
+        }
+      })
+      .catch((err) => {
+        console.error("Shop error:", err);
+        setShop(null);
+      })
+      .finally(() => setLoading(false));
+  }, [rawSlug]);
+
   const handleFetchSlots = async (serviceId: number, date: string, staffId?: number) => {
     if (!shop || !date || date.length !== 10) {
+      setAvailableSlots([]);
+      return;
+    }
+
+    if (teamMembers.length > 0 && !staffId) {
       setAvailableSlots([]);
       return;
     }
@@ -102,6 +112,11 @@ useEffect(() => {
   const handleBookingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!shop || !selectedService || !selectedSlot || submitting) return;
+
+    if (staffRequired && !selectedStaff) {
+      alert("Molimo odaberite radnika prije izbora termina.");
+      return;
+    }
 
     setSubmitting(true);
 
@@ -211,9 +226,14 @@ useEffect(() => {
 
         {/* Tim / Majstori */}
         <div className="space-y-3">
-          <h3 className={`text-xs font-bold uppercase tracking-wider ${theme.textMuted}`}>
-            IZABERI MAJSTORA {teamMembers.length > 0 ? "(OPCIONO)" : ""}
-          </h3>
+          <div className="flex items-center justify-between">
+            <h3 className={`text-xs font-bold uppercase tracking-wider ${theme.textMuted}`}>
+              IZABERI MAJSTORA {staffRequired && <span className="text-red-500">*</span>}
+            </h3>
+            {staffMissing && (
+              <span className="text-[10px] font-bold text-red-500 uppercase tracking-wide">Obavezno</span>
+            )}
+          </div>
 
           {teamMembers.length === 0 ? (
             <p className={`text-xs ${theme.textMuted} p-4 ${theme.cardBg} rounded-2xl border ${theme.border}`}>
@@ -229,13 +249,14 @@ useEffect(() => {
                     onClick={() => {
                       const newStaff = isSelected ? null : staff;
                       setSelectedStaff(newStaff);
+                      setSelectedSlot("");
                       if (selectedService && bookingDate) {
                         void handleFetchSlots(selectedService.id, bookingDate, newStaff?.id);
                       }
                     }}
                     className={`p-3 ${theme.cardBg} rounded-2xl border cursor-pointer transition-all flex items-center gap-3 ${
                       isSelected ? "ring-2 scale-[1.02]" : `hover:${theme.border}`
-                    }`}
+                    } ${staffMissing ? "ring-1 ring-red-500/40" : ""}`}
                     style={{ borderColor: isSelected ? accentColor : undefined }}
                   >
                     <img
@@ -251,6 +272,12 @@ useEffect(() => {
                 );
               })}
             </div>
+          )}
+
+          {staffMissing && (
+            <p className="text-xs font-medium text-red-500">
+              Molimo odaberite radnika prije izbora termina.
+            </p>
           )}
         </div>
 
@@ -271,7 +298,7 @@ useEffect(() => {
                     onClick={() => {
                       setSelectedService(s);
                       setSelectedSlot("");
-                      if (bookingDate) {
+                      if (bookingDate && (!staffRequired || selectedStaff)) {
                         void handleFetchSlots(s.id, bookingDate, selectedStaff?.id);
                       }
                     }}
@@ -324,6 +351,14 @@ useEffect(() => {
                     Novi termin
                   </button>
                 </div>
+              ) : staffMissing ? (
+                <div className="text-center py-8 space-y-2">
+                  <span className="text-3xl block">👤</span>
+                  <h4 className="font-bold text-sm">Odaberite radnika</h4>
+                  <p className="text-xs text-red-500 font-medium">
+                    Molimo odaberite radnika prije izbora termina.
+                  </p>
+                </div>
               ) : (
                 <div className="space-y-4">
                   <div className={`border-b ${theme.border} pb-3 flex justify-between items-center`}>
@@ -342,7 +377,8 @@ useEffect(() => {
                     <input
                       type="date"
                       min={todayStr}
-                      className={`w-full p-2.5 rounded-xl ${theme.bg} border ${theme.border} ${theme.text} text-xs outline-none`}
+                      disabled={staffMissing}
+                      className={`w-full p-2.5 rounded-xl ${theme.bg} border ${theme.border} ${theme.text} text-xs outline-none disabled:opacity-40 disabled:cursor-not-allowed`}
                       value={bookingDate}
                       onChange={(e) => {
                         const newDate = e.target.value;
@@ -364,8 +400,9 @@ useEffect(() => {
                             <button
                               key={slot}
                               type="button"
+                              disabled={staffMissing}
                               onClick={() => setSelectedSlot(slot)}
-                              className={`py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                              className={`py-1.5 rounded-lg text-xs font-bold border transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
                                 selectedSlot === slot
                                   ? "bg-white text-black border-white"
                                   : `${theme.border} ${theme.textMuted}`
@@ -408,8 +445,8 @@ useEffect(() => {
 
                       <button
                         type="submit"
-                        disabled={submitting}
-                        className="w-full py-3 rounded-xl text-black font-extrabold text-xs uppercase tracking-wider shadow-lg transition-all mt-2 hover:opacity-90"
+                        disabled={submitting || staffMissing}
+                        className="w-full py-3 rounded-xl text-black font-extrabold text-xs uppercase tracking-wider shadow-lg transition-all mt-2 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
                         style={{ backgroundColor: accentColor }}
                       >
                         {submitting ? "Slanje..." : "Potvrdi Rezervaciju"}

@@ -84,6 +84,7 @@ export interface Booking {
   shop_id: number;
   service_id: number;
   staff_id?: number | null;
+  staff?: { id: number; name: string } | null; // NOVO: podaci o dodijeljenom radniku
   status: BookingStatus;
   created_at: string;
 }
