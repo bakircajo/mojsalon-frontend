@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import {
@@ -10,14 +10,13 @@ import {
   createBooking,
   getAvailableSlots
 } from "@/lib/api";
-import type { Shop, Service } from "@/lib/types";
+import type { Shop, Service, Staff, BookingCreatePayload } from "@/lib/types";
 
-interface Staff {
-  id: number;
-  name: string;
-  role?: string;
-  avatar_url?: string;
-}
+// Proširenje Shop interfejsa za opcionalno polje galerije slika
+type ShopWithGallery = Shop & {
+  gallery_images?: string[] | string | null;
+  slug?: string;
+};
 
 const ShopMap = dynamic(() => import("@/components/ShopMap"), {
   ssr: false,
@@ -43,7 +42,7 @@ export default function ClientShopPage() {
   const params = useParams();
   const rawSlug = params?.slug;
 
-  const [shop, setShop] = useState<Shop | null>(null);
+  const [shop, setShop] = useState<ShopWithGallery | null>(null);
   const [services, setServices] = useState<Service[]>([]);
   const [teamMembers, setTeamMembers] = useState<Staff[]>([]);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
@@ -51,14 +50,19 @@ export default function ClientShopPage() {
 
   const [bookingDate, setBookingDate] = useState("");
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState("");
+  const [confirmedSlot, setConfirmedSlot] = useState("");
 
   const [clientInfo, setClientInfo] = useState({ name: "", email: "", phone: "" });
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState(false);
 
-  // Ako salon ima bar jednog radnika, odabir radnika je OBAVEZAN
+  // Stanja za Karusel / Lightbox
+  const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+
   const staffRequired = teamMembers.length > 0;
   const staffMissing = staffRequired && !selectedStaff;
 
@@ -69,7 +73,7 @@ export default function ClientShopPage() {
     setLoading(true);
 
     getShopBySlug(slugStr)
-      .then(async (shopData: any) => {
+      .then(async (shopData: ShopWithGallery) => {
         setShop(shopData);
 
         if (shopData?.id) {
@@ -89,25 +93,73 @@ export default function ClientShopPage() {
       .finally(() => setLoading(false));
   }, [rawSlug]);
 
-  const handleFetchSlots = async (serviceId: number, date: string, staffId?: number) => {
-    if (!shop || !date || date.length !== 10) {
+  useEffect(() => {
+    if (!shop || !selectedService || !bookingDate) {
       setAvailableSlots([]);
       return;
     }
 
-    if (teamMembers.length > 0 && !staffId) {
+    if (staffRequired && !selectedStaff) {
       setAvailableSlots([]);
       return;
     }
 
-    try {
-      const slots = await getAvailableSlots(shop.id, serviceId, date, staffId);
-      setAvailableSlots(slots || []);
-    } catch (err) {
-      console.error("Greška pri učitavanju slobodnih termina:", err);
-      setAvailableSlots([]);
+    let cancelled = false;
+    setSlotsLoading(true);
+
+    getAvailableSlots(shop.id, selectedService.id, bookingDate, selectedStaff?.id)
+      .then((slots) => {
+        if (!cancelled) setAvailableSlots(slots || []);
+      })
+      .catch((err) => {
+        console.error("Greška pri učitavanju slobodnih termina:", err);
+        if (!cancelled) setAvailableSlots([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSlotsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [shop, selectedService?.id, bookingDate, selectedStaff?.id, staffRequired]);
+
+  // Priprema slika za galeriju
+  let galleryImages: string[] = [];
+  if (shop && shop.gallery_images) {
+    const rawGallery = shop.gallery_images;
+    if (Array.isArray(rawGallery)) {
+      galleryImages = rawGallery;
+    } else if (typeof rawGallery === "string") {
+      try {
+        galleryImages = JSON.parse(rawGallery);
+      } catch {
+        galleryImages = [];
+      }
     }
-  };
+  }
+
+  const nextSlide = useCallback(() => {
+    if (galleryImages.length === 0) return;
+    setCurrentSlideIndex((prev) => (prev + 1) % galleryImages.length);
+  }, [galleryImages.length]);
+
+  const prevSlide = useCallback(() => {
+    if (galleryImages.length === 0) return;
+    setCurrentSlideIndex((prev) => (prev - 1 + galleryImages.length) % galleryImages.length);
+  }, [galleryImages.length]);
+
+  // Tastaturna navigacija za Lightbox
+  useEffect(() => {
+    if (!lightboxOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight") nextSlide();
+      if (e.key === "ArrowLeft") prevSlide();
+      if (e.key === "Escape") setLightboxOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [lightboxOpen, nextSlide, prevSlide]);
 
   const handleBookingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,7 +173,7 @@ export default function ClientShopPage() {
     setSubmitting(true);
 
     try {
-      const payload: any = {
+      const payload: BookingCreatePayload = {
         shop_id: shop.id,
         service_id: selectedService.id,
         staff_id: selectedStaff ? selectedStaff.id : undefined,
@@ -133,6 +185,7 @@ export default function ClientShopPage() {
 
       await createBooking(payload);
 
+      setConfirmedSlot(selectedSlot);
       setBookingSuccess(true);
       setClientInfo({ name: "", email: "", phone: "" });
     } catch (err: unknown) {
@@ -174,8 +227,6 @@ export default function ClientShopPage() {
     !isNaN(Number(shop.latitude)) &&
     !isNaN(Number(shop.longitude))
   );
-
-  const galleryImages: string[] = (shop as any).gallery_images || [];
 
   return (
     <div className={`min-h-screen ${theme.bg} ${theme.text} font-sans transition-colors duration-300`}>
@@ -224,7 +275,97 @@ export default function ClientShopPage() {
           </div>
         </div>
 
-        {/* Tim / Majstori */}
+        {/* Slideshow Galerija */}
+        {galleryImages.length > 0 && (
+          <div className={`p-6 ${theme.cardBg} border ${theme.border} rounded-3xl space-y-4`}>
+            <div className="flex justify-between items-center">
+              <h3 className={`text-xs font-bold uppercase tracking-wider ${theme.textMuted}`}>
+                Galerija Radova ({galleryImages.length})
+              </h3>
+              <span className={`text-[10px] ${theme.textMuted}`}>Kliknite za uvećanje</span>
+            </div>
+
+            <div className="relative group overflow-hidden rounded-2xl border border-zinc-800 bg-black/40 aspect-[16/9] sm:aspect-[21/9]">
+              <img
+                src={galleryImages[currentSlideIndex]}
+                alt={`Slika radova ${currentSlideIndex + 1}`}
+                onClick={() => setLightboxOpen(true)}
+                className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-all duration-300"
+              />
+
+              {galleryImages.length > 1 && (
+                <>
+                  <button
+                    onClick={prevSlide}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 text-white flex items-center justify-center backdrop-blur-md opacity-80 hover:opacity-100 hover:scale-110 transition-all border border-white/10"
+                    aria-label="Prethodna slika"
+                  >
+                    ❮
+                  </button>
+                  <button
+                    onClick={nextSlide}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 text-white flex items-center justify-center backdrop-blur-md opacity-80 hover:opacity-100 hover:scale-110 transition-all border border-white/10"
+                    aria-label="Sledeća slika"
+                  >
+                    ❯
+                  </button>
+
+                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/50 backdrop-blur-md border border-white/10">
+                    {galleryImages.map((_, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setCurrentSlideIndex(idx)}
+                        className={`h-2 rounded-full transition-all ${
+                          currentSlideIndex === idx ? "w-6 bg-white" : "w-2 bg-white/40 hover:bg-white/70"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Lightbox Modal */}
+        {lightboxOpen && galleryImages.length > 0 && (
+          <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-lg flex items-center justify-center p-4">
+            <button
+              onClick={() => setLightboxOpen(false)}
+              className="absolute top-5 right-5 text-white/70 hover:text-white text-3xl font-light z-10"
+            >
+              ✕
+            </button>
+
+            <img
+              src={galleryImages[currentSlideIndex]}
+              alt={`Fullscreen slika ${currentSlideIndex + 1}`}
+              className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl"
+            />
+
+            {galleryImages.length > 1 && (
+              <>
+                <button
+                  onClick={prevSlide}
+                  className="absolute left-4 top-1/2 -translate-y-1/2 text-3xl text-white/80 hover:text-white p-3 rounded-full bg-white/10 hover:bg-white/20 transition-all"
+                >
+                  ❮
+                </button>
+                <button
+                  onClick={nextSlide}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-3xl text-white/80 hover:text-white p-3 rounded-full bg-white/10 hover:bg-white/20 transition-all"
+                >
+                  ❯
+                </button>
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-xs font-semibold text-zinc-400">
+                  {currentSlideIndex + 1} / {galleryImages.length}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Tim / Radnici */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h3 className={`text-xs font-bold uppercase tracking-wider ${theme.textMuted}`}>
@@ -250,9 +391,6 @@ export default function ClientShopPage() {
                       const newStaff = isSelected ? null : staff;
                       setSelectedStaff(newStaff);
                       setSelectedSlot("");
-                      if (selectedService && bookingDate) {
-                        void handleFetchSlots(selectedService.id, bookingDate, newStaff?.id);
-                      }
                     }}
                     className={`p-3 ${theme.cardBg} rounded-2xl border cursor-pointer transition-all flex items-center gap-3 ${
                       isSelected ? "ring-2 scale-[1.02]" : `hover:${theme.border}`
@@ -298,9 +436,6 @@ export default function ClientShopPage() {
                     onClick={() => {
                       setSelectedService(s);
                       setSelectedSlot("");
-                      if (bookingDate && (!staffRequired || selectedStaff)) {
-                        void handleFetchSlots(s.id, bookingDate, selectedStaff?.id);
-                      }
                     }}
                     className={`p-4 ${theme.cardBg} rounded-2xl border cursor-pointer transition-all flex justify-between items-center ${
                       isSelected ? "ring-2 scale-[1.01]" : `hover:${theme.border}`
@@ -337,15 +472,16 @@ export default function ClientShopPage() {
                   </div>
                   <h4 className="text-lg font-bold">Uspješno zakazano!</h4>
                   <p className={`text-xs ${theme.textMuted}`}>
-                    Vidimo se <strong>{bookingDate}</strong> u <strong>{selectedSlot}h</strong>.
+                    Vidimo se <strong>{bookingDate.split("-").reverse().join(".")}</strong> u <strong>{confirmedSlot}h</strong>.
                   </p>
                   <button
                     onClick={() => {
                       setBookingSuccess(false);
                       setSelectedService(null);
                       setSelectedSlot("");
+                      setConfirmedSlot("");
                     }}
-                    className="w-full py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider text-black mt-2"
+                    className="w-full py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider text-black mt-2 hover:opacity-90 transition-all"
                     style={{ backgroundColor: accentColor }}
                   >
                     Novi termin
@@ -381,10 +517,8 @@ export default function ClientShopPage() {
                       className={`w-full p-2.5 rounded-xl ${theme.bg} border ${theme.border} ${theme.text} text-xs outline-none disabled:opacity-40 disabled:cursor-not-allowed`}
                       value={bookingDate}
                       onChange={(e) => {
-                        const newDate = e.target.value;
-                        setBookingDate(newDate);
+                        setBookingDate(e.target.value);
                         setSelectedSlot("");
-                        void handleFetchSlots(selectedService.id, newDate, selectedStaff?.id);
                       }}
                     />
                   </div>
@@ -392,7 +526,9 @@ export default function ClientShopPage() {
                   {bookingDate && (
                     <div className="space-y-1">
                       <label className={`block text-xs font-bold uppercase ${theme.textMuted}`}>Slobodni Termini</label>
-                      {availableSlots.length === 0 ? (
+                      {slotsLoading ? (
+                        <p className={`text-xs ${theme.textMuted} py-1`}>Provjeravam dostupnost...</p>
+                      ) : availableSlots.length === 0 ? (
                         <p className={`text-xs ${theme.textMuted} py-1`}>Nema dostupnih termina za odabrani datum.</p>
                       ) : (
                         <div className="grid grid-cols-3 gap-2 max-h-36 overflow-y-auto">
@@ -459,22 +595,7 @@ export default function ClientShopPage() {
           </div>
         </div>
 
-        {galleryImages.length > 0 && (
-          <div className={`p-6 ${theme.cardBg} border ${theme.border} rounded-3xl space-y-3`}>
-            <h3 className={`text-xs font-bold uppercase tracking-wider ${theme.textMuted}`}>Galerija Radova</h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2">
-              {galleryImages.map((imgUrl, idx) => (
-                <img
-                  key={idx}
-                  src={imgUrl}
-                  alt={`Galerija slika ${idx + 1}`}
-                  className="w-full h-36 object-cover rounded-2xl border border-zinc-800 hover:scale-[1.02] transition-all duration-200"
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
+        {/* Mapa */}
         {hasValidCoords && (
           <div className={`p-6 ${theme.cardBg} border ${theme.border} rounded-3xl space-y-3`}>
             <h3 className={`text-xs font-bold uppercase tracking-wider ${theme.textMuted}`}>Lokacija Salona</h3>

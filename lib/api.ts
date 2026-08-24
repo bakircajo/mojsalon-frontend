@@ -264,7 +264,6 @@ export function createBooking(payload: BookingCreatePayload) {
     body: JSON.stringify(payload),
   });
 }
-
 export function getAvailableSlots(
   shopId: number,
   serviceId: number,
@@ -279,9 +278,11 @@ export function getAvailableSlots(
   if (staffId) {
     params.append("staff_id", String(staffId));
   }
-  return request<string[]>(`/bookings/available-slots?${params.toString()}`);
+  return request<string[]>(
+    `/bookings/available-slots?${params.toString()}`,
+    { cache: "no-store" }
+  );
 }
-
 export function getShopBookings(shopId: number) {
   return request<Booking[]>(`/bookings/shop/${shopId}`, {}, true);
 }
