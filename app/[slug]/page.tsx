@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import {
   getShopBySlug,
@@ -38,8 +38,12 @@ const THEME_STYLES: Record<string, { bg: string; cardBg: string; text: string; t
   gold: { bg: "bg-black", cardBg: "bg-[#121212]", text: "text-amber-100", textMuted: "text-amber-300/60", border: "border-amber-900/50" },
 };
 
+// Lista sistemskih slug-ova koje dinamicka ruta ne smije slati backendu
+const RESERVED_SLUGS = ["login", "admin", "register", "onboarding", "dashboard"];
+
 export default function ClientShopPage() {
   const params = useParams();
+  const router = useRouter();
   const rawSlug = params?.slug;
 
   const [shop, setShop] = useState<ShopWithGallery | null>(null);
@@ -69,6 +73,20 @@ export default function ClientShopPage() {
   useEffect(() => {
     if (!rawSlug) return;
     const slugStr = Array.isArray(rawSlug) ? rawSlug[0] : rawSlug;
+    const cleanSlug = slugStr.toLowerCase().trim();
+
+    // 1. ZASTITA: Ako je slug zapravo sistemska ruta, obustavi poziv i preusmjeri
+    if (RESERVED_SLUGS.includes(cleanSlug)) {
+      setLoading(false);
+      if (cleanSlug === "login") {
+        router.replace("/admin/login");
+      } else if (cleanSlug === "register") {
+        router.replace("/admin/register");
+      } else if (cleanSlug === "dashboard" || cleanSlug === "admin") {
+        router.replace("/admin/dashboard");
+      }
+      return;
+    }
 
     setLoading(true);
 
@@ -91,7 +109,7 @@ export default function ClientShopPage() {
         setShop(null);
       })
       .finally(() => setLoading(false));
-  }, [rawSlug]);
+  }, [rawSlug, router]);
 
   useEffect(() => {
     if (!shop || !selectedService || !bookingDate) {

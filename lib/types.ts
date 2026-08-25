@@ -14,8 +14,6 @@ export interface Shop {
   is_active: boolean;
   owner_id: number;
   created_at: string;
-  // Novi podaci za Onboarding Wizard i Builder
-  // slug: string; // Vraća se sa backenda
   shop_type: string;
   instagram: string | null;
   theme: string;
@@ -24,15 +22,12 @@ export interface Shop {
   border_radius: number;
   enabled_sections: string[];
   is_published: boolean;
-  // Adresa, koordinate i radno vrijeme
   address: string | null;
   latitude: number | null;
   longitude: number | null;
   working_hours: any | null;
-  // Fotogalerija salona
-  gallery_images?: string[] | string | null;
+  gallery_images?: string[] | string | null; // NOVO
 }
-
 // -------------------------------------------------------------------
 // 1. KREIRANJE SALONA (Minimalni Payload prema novom DTO-u na backendu)
 // Uklonjen slug i sve postavke dizajna i radnog vremena.

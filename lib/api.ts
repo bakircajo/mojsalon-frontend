@@ -42,11 +42,11 @@ async function request<T>(
   const res = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
 
   if (!res.ok) {
-    // Ako je token nevažeći ili istekao (401), očisti ga i preusmjeri na login
+    // Ako je token nevažeći ili istekao (401), očisti ga i preusmjeri na /admin/login
     if (res.status === 401) {
       removeToken();
-      if (typeof window !== "undefined" && !window.location.pathname.includes("/login")) {
-        window.location.href = "/login";
+      if (typeof window !== "undefined" && !window.location.pathname.includes("/admin/login")) {
+        window.location.href = "/admin/login";
       }
     }
 
@@ -131,7 +131,7 @@ export function updateShopGallery(shopId: number, galleryImages: string[]) {
   return request<Shop>(`/shops/${shopId}/gallery`, { method: "PATCH", body: JSON.stringify({ gallery_images: galleryImages }) }, true);
 }
 
-export async function updateShop(shopId: number, payload: ShopUpdatePayload & { staff?: any[] }) {
+export async function updateShop(shopId: number, payload: ShopUpdatePayload & { staff?: any[]; gallery_images?: string[] }) {
   let updatedShop: Shop | null = null;
 
   if (payload.name !== undefined || payload.description !== undefined || payload.shop_type !== undefined || payload.instagram !== undefined) {
@@ -167,6 +167,10 @@ export async function updateShop(shopId: number, payload: ShopUpdatePayload & { 
     });
   }
 
+  if (payload.gallery_images !== undefined) {
+    updatedShop = await updateShopGallery(shopId, payload.gallery_images);
+  }
+
   if (payload.is_published !== undefined) {
     updatedShop = await updateShopPublishStatus(shopId, payload.is_published);
   }
@@ -186,16 +190,17 @@ export function getShopBySlug(slug: string) {
   return request<Shop>(`/shops/by-slug/${slug}`);
 }
 
+export async function deleteShop(shopId: number): Promise<void> {
+  return request<void>(`/shops/${shopId}`, {
+    method: "DELETE",
+  }, true); // <- OVDJE JE DODAT 'true' ZA AUTH TOKEN
+}
+
 // ---------- Uposlenici / Radnici ----------
 
 export async function getStaffForShop(shopId: number): Promise<Staff[]> {
   try {
-    // Mora gađati /staff/shop/ (a ne samo /shopId)
-    const response = await fetch(`http://127.0.0.1:8000/api/v1/staff/shop/${shopId}`);
-    if (!response.ok) return [];
-
-    const data = await response.json();
-    return data || [];
+    return await request<Staff[]>(`/staff/shop/${shopId}`);
   } catch (err) {
     console.error("Greška pri dohvatanju radnika:", err);
     return [];
@@ -212,6 +217,7 @@ export function updateStaff(
 ) {
   return request<Staff>(`/staff/${staffId}`, { method: "PATCH", body: JSON.stringify(payload) }, true);
 }
+
 export function deleteStaff(staffId: number) {
   return request<void>(`/staff/${staffId}`, { method: "DELETE" }, true);
 }
@@ -264,6 +270,7 @@ export function createBooking(payload: BookingCreatePayload) {
     body: JSON.stringify(payload),
   });
 }
+
 export function getAvailableSlots(
   shopId: number,
   serviceId: number,
@@ -283,6 +290,7 @@ export function getAvailableSlots(
     { cache: "no-store" }
   );
 }
+
 export function getShopBookings(shopId: number) {
   return request<Booking[]>(`/bookings/shop/${shopId}`, {}, true);
 }
