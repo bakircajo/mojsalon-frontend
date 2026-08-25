@@ -29,6 +29,8 @@ export interface Shop {
   latitude: number | null;
   longitude: number | null;
   working_hours: any | null;
+  // Fotogalerija salona
+  gallery_images?: string[] | string | null;
 }
 
 // -------------------------------------------------------------------
@@ -61,6 +63,8 @@ export interface ShopUpdatePayload {
   latitude?: number | null;
   longitude?: number | null;
   working_hours?: any;
+  // Fotogalerija salona pri čuvanju postavki
+  gallery_images?: string[] | string;
 }
 
 export interface Service {

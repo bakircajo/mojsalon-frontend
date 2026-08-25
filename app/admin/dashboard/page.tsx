@@ -72,7 +72,7 @@ export default function AdminDashboard() {
     work_start: "09:00",
     work_end: "17:00",
     work_days: "Pon-Sub",
-    gallery: [] as string[],
+    gallery_images: [] as string[],
   });
   const [savingSettings, setSavingSettings] = useState(false);
 
@@ -96,6 +96,20 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (!selectedShop) return;
 
+    // Parsiranje slika galerije iz baze (ako je string, JSON string ili niz)
+    let parsedGallery: string[] = [];
+    if (selectedShop.gallery_images) {
+      if (Array.isArray(selectedShop.gallery_images)) {
+        parsedGallery = selectedShop.gallery_images;
+      } else if (typeof selectedShop.gallery_images === "string") {
+        try {
+          parsedGallery = JSON.parse(selectedShop.gallery_images);
+        } catch {
+          parsedGallery = [selectedShop.gallery_images];
+        }
+      }
+    }
+
     setShopSettings({
       name: selectedShop.name || "",
       address: selectedShop.address || "",
@@ -108,7 +122,7 @@ export default function AdminDashboard() {
       work_start: (selectedShop as any).work_start || "09:00",
       work_end: (selectedShop as any).work_end || "17:00",
       work_days: (selectedShop as any).work_days || "Pon-Sub",
-      gallery: (selectedShop as any).gallery || [],
+      gallery_images: parsedGallery,
     });
 
     async function loadShopData() {
@@ -174,7 +188,7 @@ export default function AdminDashboard() {
     if (!galleryInput.trim()) return;
     setShopSettings((prev) => ({
       ...prev,
-      gallery: [...prev.gallery, galleryInput.trim()],
+      gallery_images: [...prev.gallery_images, galleryInput.trim()],
     }));
     setGalleryInput("");
   };
@@ -182,11 +196,11 @@ export default function AdminDashboard() {
   const handleRemoveImage = (index: number) => {
     setShopSettings((prev) => ({
       ...prev,
-      gallery: prev.gallery.filter((_, i) => i !== index),
+      gallery_images: prev.gallery_images.filter((_, i) => i !== index),
     }));
   };
 
-  // Upravljanje uposlenicima — direktno preko API-ja, ne kroz shopSettings
+  // Upravljanje uposlenicima
   const handleSaveStaff = async () => {
     if (!staffName.trim() || !selectedShop) return;
 
@@ -374,7 +388,7 @@ export default function AdminDashboard() {
         work_start: shopSettings.work_start,
         work_end: shopSettings.work_end,
         work_days: shopSettings.work_days,
-        gallery: shopSettings.gallery,
+        gallery_images: shopSettings.gallery_images, // Šalje se ispravno polje
       } as any);
 
       setSelectedShop(updatedShop);
@@ -473,7 +487,7 @@ export default function AdminDashboard() {
             </button>
 
             <a
-              href={`/${selectedShop.slug}`}
+              href={`/${(selectedShop as any).slug}`}
               target="_blank"
               rel="noreferrer"
               className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition-colors"
@@ -803,21 +817,21 @@ export default function AdminDashboard() {
                       required
                     />
                     {isSearchingAddress && (
-                      <span className="text-xs text-gray-400 mt-1 block">Pretražujem lokacije...</span>
+                      <span className="absolute right-3 top-8 text-xs text-gray-400">Tražim...</span>
                     )}
 
                     {addressSuggestions.length > 0 && (
-                      <ul className="absolute z-50 left-0 right-0 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto mt-1">
+                      <div className="absolute z-10 w-full bg-white border rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
                         {addressSuggestions.map((item, idx) => (
-                          <li
+                          <div
                             key={idx}
                             onClick={() => selectSuggestion(item)}
-                            className="px-3 py-2 text-xs hover:bg-gray-100 cursor-pointer border-b last:border-b-0 text-gray-700"
+                            className="p-2 text-xs hover:bg-gray-100 cursor-pointer border-b border-gray-50 last:border-0"
                           >
-                            📍 {item.display_name}
-                          </li>
+                            {item.display_name}
+                          </div>
                         ))}
-                      </ul>
+                      </div>
                     )}
                   </div>
 
@@ -828,203 +842,69 @@ export default function AdminDashboard() {
                       value={shopSettings.phone}
                       onChange={(e) => setShopSettings({ ...shopSettings, phone: e.target.value })}
                       className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
-                      placeholder="+387 61 000 000"
                     />
                   </div>
+
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Instagram (@korisnicko_ime)</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Instagram Korisničko Ime</label>
                     <input
                       type="text"
                       value={shopSettings.instagram}
                       onChange={(e) => setShopSettings({ ...shopSettings, instagram: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
-                      placeholder="@mojsalon"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Sekcija 2: Radno Vrijeme & Radni Dani */}
-              <div className="space-y-4 pt-2">
-                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider border-b pb-2">
-                  2. Radno Vrijeme & Radni Dani
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Početak radnog vremena</label>
-                    <input
-                      type="time"
-                      value={shopSettings.work_start}
-                      onChange={(e) => setShopSettings({ ...shopSettings, work_start: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Kraj radnog vremena</label>
-                    <input
-                      type="time"
-                      value={shopSettings.work_end}
-                      onChange={(e) => setShopSettings({ ...shopSettings, work_end: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Radni dani</label>
-                    <input
-                      type="text"
-                      value={shopSettings.work_days}
-                      onChange={(e) => setShopSettings({ ...shopSettings, work_days: e.target.value })}
-                      placeholder="Pon-Sub"
+                      placeholder="@moj_salon"
                       className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Sekcija 3: Fotografije & Uposlenici */}
-              <div className="space-y-4 pt-2">
+              {/* Sekcija 2: Fotogalerija */}
+              <div className="space-y-4">
                 <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider border-b pb-2">
-                  3. Galerija Slika & Osoblje
+                  2. Fotogalerija Salona
                 </h3>
-
-                {/* Galerija slika */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Dodaj sliku (URL link)</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="url"
-                      value={galleryInput}
-                      onChange={(e) => setGalleryInput(e.target.value)}
-                      placeholder="https://example.com/slika.jpg"
-                      className="flex-1 px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddImage}
-                      className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-medium rounded-lg transition-colors"
-                    >
-                      + Dodaj
-                    </button>
-                  </div>
-
-                  {shopSettings.gallery.length > 0 && (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-                      {shopSettings.gallery.map((url, idx) => (
-                        <div key={idx} className="relative group rounded-lg overflow-hidden border border-gray-200">
-                          <img src={url} alt={`Galerija ${idx}`} className="w-full h-24 object-cover" />
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveImage(idx)}
-                            className="absolute top-1 right-1 bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-80 hover:opacity-100"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={galleryInput}
+                    onChange={(e) => setGalleryInput(e.target.value)}
+                    placeholder="https://example.com/slika.jpg"
+                    className="flex-1 px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddImage}
+                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    + Dodaj sliku
+                  </button>
                 </div>
 
-                {/* Uposlenici — rade preko pravog /staff API-ja (create + update + delete) */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
-                    {editingStaffId ? "Uredi uposlenika" : "Dodaj uposlenika"}
-                  </label>
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <input
-                      type="text"
-                      value={staffName}
-                      onChange={(e) => setStaffName(e.target.value)}
-                      placeholder="Ime i prezime"
-                      className="flex-1 px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
-                    />
-                    <input
-                      type="text"
-                      value={staffRole}
-                      onChange={(e) => setStaffRole(e.target.value)}
-                      placeholder="Uloga (npr. Senior Frizer)"
-                      className="flex-1 px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
-                    />
-                    <input
-                      type="url"
-                      value={staffAvatarUrl}
-                      onChange={(e) => setStaffAvatarUrl(e.target.value)}
-                      placeholder="URL avatara (opcionalno)"
-                      className="flex-1 px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
-                    />
-                    <div className="flex gap-2 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => void handleSaveStaff()}
-                        disabled={staffSaving}
-                        className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
-                      >
-                        {staffSaving ? "Spašavam..." : editingStaffId ? "Sačuvaj Izmjene" : "+ Dodaj"}
-                      </button>
-                      {editingStaffId && (
+                {shopSettings.gallery_images.length > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2">
+                    {shopSettings.gallery_images.map((imgUrl, index) => (
+                      <div key={index} className="relative group rounded-lg overflow-hidden border border-gray-200 h-24 bg-gray-50">
+                        <img src={imgUrl} alt={`Galerija ${index}`} className="w-full h-full object-cover" />
                         <button
                           type="button"
-                          onClick={handleCancelStaffEdit}
-                          className="px-4 py-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-medium rounded-lg transition-colors"
+                          onClick={() => handleRemoveImage(index)}
+                          className="absolute top-1 right-1 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs opacity-80 group-hover:opacity-100 transition-opacity"
                         >
-                          Odustani
+                          ✕
                         </button>
-                      )}
-                    </div>
+                      </div>
+                    ))}
                   </div>
-
-                  {staffList.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-3">
-                      {staffList.map((person) => (
-                        <div
-                          key={person.id}
-                          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-700 border ${
-                            editingStaffId === person.id ? "bg-blue-50 border-blue-300" : "bg-gray-100 border-transparent"
-                          }`}
-                        >
-                          {person.avatar_url && (
-                            <img
-                              src={person.avatar_url}
-                              alt={person.name}
-                              className="w-5 h-5 rounded-full object-cover"
-                            />
-                          )}
-                          <span>
-                            <strong>{person.name}</strong> ({person.role})
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => handleEditStaffClick(person)}
-                            className="text-blue-600 hover:text-blue-800 font-semibold"
-                            title="Uredi"
-                          >
-                            ✎
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void handleRemoveStaff(person.id)}
-                            className="text-red-500 hover:text-red-700 font-bold"
-                            title="Obriši"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                )}
               </div>
 
-              {/* Dugme za spasavanje */}
               <div className="pt-4 border-t">
                 <button
                   type="submit"
                   disabled={savingSettings}
-                  className="px-6 py-2.5 bg-black text-white font-medium text-sm rounded-lg hover:bg-gray-800 disabled:opacity-50 transition-colors"
+                  className="px-6 py-2.5 bg-black text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors disabled:opacity-50"
                 >
-                  {savingSettings ? "Sačuvavam..." : "Sačuvaj Postavke Salona"}
+                  {savingSettings ? "Čuvanje..." : "Sačuvaj Postavke Salona"}
                 </button>
               </div>
             </form>
