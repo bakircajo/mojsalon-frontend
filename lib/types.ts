@@ -10,6 +10,7 @@ export interface User {
 export interface Shop {
   id: number;
   name: string;
+  slug: string;
   description: string | null;
   is_active: boolean;
   owner_id: number;
@@ -86,6 +87,11 @@ export interface Booking {
   staff?: { id: number; name: string } | null; // NOVO: podaci o dodijeljenom radniku
   status: BookingStatus;
   created_at: string;
+}
+
+export interface SlotInfo {
+  time: string;
+  available: boolean;
 }
 
 export interface BookingCreatePayload {

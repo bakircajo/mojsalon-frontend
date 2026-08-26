@@ -8,6 +8,7 @@ import type {
   Booking,
   BookingCreatePayload,
   BookingStatus,
+  SlotInfo,
   Staff,
 } from "@/lib/types";
 
@@ -190,6 +191,10 @@ export function getShopBySlug(slug: string) {
   return request<Shop>(`/shops/by-slug/${slug}`);
 }
 
+export function getPublicShops() {
+  return request<Shop[]>("/shops/public");
+}
+
 export async function deleteShop(shopId: number): Promise<void> {
   return request<void>(`/shops/${shopId}`, {
     method: "DELETE",
@@ -285,14 +290,23 @@ export function getAvailableSlots(
   if (staffId) {
     params.append("staff_id", String(staffId));
   }
-  return request<string[]>(
+  return request<SlotInfo[]>(
     `/bookings/available-slots?${params.toString()}`,
     { cache: "no-store" }
   );
 }
 
-export function getShopBookings(shopId: number) {
-  return request<Booking[]>(`/bookings/shop/${shopId}`, {}, true);
+export function getShopBookings(
+  shopId: number,
+  params?: { page?: number; limit?: number; startDate?: string; endDate?: string }
+) {
+  const search = new URLSearchParams();
+  if (params?.page) search.set("page", String(params.page));
+  if (params?.limit) search.set("limit", String(params.limit));
+  if (params?.startDate) search.set("start_date", params.startDate);
+  if (params?.endDate) search.set("end_date", params.endDate);
+  const qs = search.toString();
+  return request<Booking[]>(`/bookings/shop/${shopId}${qs ? `?${qs}` : ""}`, {}, true);
 }
 
 export function updateBookingStatus(
