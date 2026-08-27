@@ -5,8 +5,8 @@ import { DayPicker } from "react-day-picker";
 import { format } from "date-fns";
 import { bs } from "date-fns/locale";
 import "react-day-picker/style.css";
-import { createBooking, getAvailableSlots } from "@/lib/api";
-import type { Service, Staff, SlotInfo, BookingCreatePayload } from "@/lib/types";
+import { createBooking, getAvailableSlots, getStaffServicePricing } from "@/lib/api";
+import type { Service, Staff, SlotInfo, BookingCreatePayload, StaffServicePricing } from "@/lib/types";
 
 type ThemeStyle = { bg: string; cardBg: string; text: string; textMuted: string; border: string };
 
@@ -67,6 +67,7 @@ export default function BookingModal({
 
   const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
+  const [staffPricing, setStaffPricing] = useState<StaffServicePricing[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [availableSlots, setAvailableSlots] = useState<SlotInfo[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
@@ -98,6 +99,33 @@ export default function BookingModal({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
+
+  // Kada je odabran radnik, dohvati NJEGOVE rezolvovane cijene/trajanja usluga (override ako
+  // postoji, inače bazna vrijednost) — koristi se za prikaz cijena u koraku "Usluga".
+  useEffect(() => {
+    if (!selectedStaff) {
+      setStaffPricing([]);
+      return;
+    }
+    let cancelled = false;
+    getStaffServicePricing(selectedStaff.id)
+      .then((data) => {
+        if (!cancelled) setStaffPricing(data);
+      })
+      .catch(() => {
+        if (!cancelled) setStaffPricing([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedStaff?.id]);
+
+  function getDisplayedPricing(service: Service): { price: number; duration_minutes: number } {
+    const override = staffPricing.find((p) => p.id === service.id);
+    return override
+      ? { price: override.price, duration_minutes: override.duration_minutes }
+      : { price: service.price, duration_minutes: service.duration_minutes };
+  }
 
   // Učitavanje slobodnih termina — zahtijeva uslugu (radi trajanja) i, ako je potreban, radnika
   useEffect(() => {
@@ -268,6 +296,7 @@ export default function BookingModal({
                 ) : (
                   services.map((s) => {
                     const isSelected = selectedService?.id === s.id;
+                    const { price, duration_minutes } = getDisplayedPricing(s);
                     return (
                       <div
                         key={s.id}
@@ -283,11 +312,11 @@ export default function BookingModal({
                         <div>
                           <h4 className="text-sm font-bold">{s.title}</h4>
                           <p className={`mt-0.5 text-xs ${theme.textMuted}`}>
-                            {s.duration_minutes} min {s.description && `• ${s.description}`}
+                            {duration_minutes} min {s.description && `• ${s.description}`}
                           </p>
                         </div>
                         <span className="text-sm font-black" style={{ color: accentColor }}>
-                          {s.price} KM
+                          {price} KM
                         </span>
                       </div>
                     );

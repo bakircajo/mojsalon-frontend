@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 
 import { getShopBySlug, getServicesForShop, getStaffForShop } from "@/lib/api";
+import { isShopOpenNow, getTodayHoursLabel } from "@/lib/format";
 import type { Shop, Service, Staff } from "@/lib/types";
 import BookingModal from "@/components/BookingModal";
 
@@ -52,6 +53,7 @@ export default function ClientShopPage() {
   // Stanja za Karusel / Lightbox
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [isSlideshowHovered, setIsSlideshowHovered] = useState(false);
 
   useEffect(() => {
     if (!rawSlug) return;
@@ -118,6 +120,16 @@ export default function ClientShopPage() {
     setCurrentSlideIndex((prev) => (prev - 1 + galleryImages.length) % galleryImages.length);
   }, [galleryImages.length]);
 
+  // Auto-play: sljedeći slajd svakih 10s. Pauzira se na hover, u lightbox-u, i resetuje
+  // tajmer nakon svake ručne navigacije (klik na strelicu/tačku mijenja currentSlideIndex).
+  useEffect(() => {
+    if (galleryImages.length <= 1 || lightboxOpen || isSlideshowHovered) return;
+    const timer = setInterval(() => {
+      setCurrentSlideIndex((prev) => (prev + 1) % galleryImages.length);
+    }, 10000);
+    return () => clearInterval(timer);
+  }, [galleryImages.length, lightboxOpen, isSlideshowHovered, currentSlideIndex]);
+
   useEffect(() => {
     if (!lightboxOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -152,6 +164,10 @@ export default function ClientShopPage() {
   const currentThemeKey = (shop.theme || "noir").toLowerCase();
   const theme = THEME_STYLES[currentThemeKey] || THEME_STYLES.noir;
   const accentColor = shop.accent_color || "#F59E0B";
+  const isOpenNow = isShopOpenNow(shop.working_hours);
+  const todayHoursLabel = getTodayHoursLabel(shop.working_hours);
+  // Puna adresa (ulica i broj) ima prednost nad opštom lokacijom sa mape, ako je postavljena.
+  const displayAddress = shop.full_address || shop.address;
 
   const hasValidCoords = Boolean(
     shop.latitude &&
@@ -193,17 +209,34 @@ export default function ClientShopPage() {
             </span>
             <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight">{shop.name}</h2>
             <p className={`text-sm ${theme.textMuted} mt-2`}>
-              📍 {shop.address || "Centar grada"}
+              📍 {displayAddress || "Centar grada"}
             </p>
           </div>
 
-          <div className={`max-w-md mx-auto py-2 px-4 rounded-2xl border ${theme.border} flex justify-between items-center text-xs ${theme.textMuted}`}>
-            <span>
-              Radno vrijeme: <strong>08:00 - 16:30</strong>
-            </span>
-            <span className="text-green-400 font-bold flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" /> Otvoreno
-            </span>
+          <div className={`max-w-md mx-auto py-2 px-4 rounded-2xl border ${theme.border} space-y-1.5 text-xs ${theme.textMuted}`}>
+            <div className="flex justify-between items-center">
+              <span>
+                Radno vrijeme danas: <strong className={theme.text}>{todayHoursLabel}</strong>
+              </span>
+              {isOpenNow ? (
+                <span className="text-green-400 font-bold flex items-center gap-1 shrink-0">
+                  <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" /> Otvoreno
+                </span>
+              ) : (
+                <span className="text-red-400 font-bold flex items-center gap-1 shrink-0">
+                  <span className="w-2 h-2 rounded-full bg-red-500" /> Zatvoreno
+                </span>
+              )}
+            </div>
+            {shop.phone && (
+              <a
+                href={`tel:${shop.phone}`}
+                className="flex items-center justify-center gap-1.5 pt-1.5 border-t border-white/5 font-semibold hover:opacity-80 transition-opacity"
+                style={{ color: accentColor }}
+              >
+                📞 {shop.phone}
+              </a>
+            )}
           </div>
         </div>
 
@@ -217,13 +250,31 @@ export default function ClientShopPage() {
               <span className={`text-[10px] ${theme.textMuted}`}>Kliknite za uvećanje</span>
             </div>
 
-            <div className="relative group overflow-hidden rounded-2xl border border-zinc-800 bg-black/40 aspect-[16/9] sm:aspect-[21/9]">
+            <div
+              className="relative group overflow-hidden rounded-2xl border border-zinc-800 bg-black/40 aspect-[4/3] sm:aspect-[16/9] lg:aspect-[21/9]"
+              onMouseEnter={() => setIsSlideshowHovered(true)}
+              onMouseLeave={() => setIsSlideshowHovered(false)}
+            >
               <img
+                key={currentSlideIndex}
                 src={galleryImages[currentSlideIndex]}
                 alt={`Slika radova ${currentSlideIndex + 1}`}
                 onClick={() => setLightboxOpen(true)}
-                className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-all duration-300"
+                className="gallery-fade w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform duration-300"
               />
+              <style jsx>{`
+                @keyframes gallery-fade-in {
+                  from {
+                    opacity: 0;
+                  }
+                  to {
+                    opacity: 1;
+                  }
+                }
+                .gallery-fade {
+                  animation: gallery-fade-in 0.6s ease;
+                }
+              `}</style>
 
               {galleryImages.length > 1 && (
                 <>
@@ -297,7 +348,7 @@ export default function ClientShopPage() {
           </div>
         )}
 
-        {/* Naš Tim (pregled — odabir majstora ide kroz REZERVIŠI modal ispod) */}
+        {/* Naš Tim — kartice sa slikom, ulogom i kratkim CV opisom (odabir majstora ide kroz REZERVIŠI modal ispod) */}
         <div className="space-y-3">
           <h3 className={`text-xs font-bold uppercase tracking-wider ${theme.textMuted}`}>Naš Tim</h3>
           {teamMembers.length === 0 ? (
@@ -305,23 +356,43 @@ export default function ClientShopPage() {
               Trenutno nema unesenih majstora u salonu.
             </p>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {teamMembers.map((staff) => (
-                <div
-                  key={staff.id}
-                  className={`p-3 ${theme.cardBg} rounded-2xl border ${theme.border} flex items-center gap-3`}
-                >
-                  <img
-                    src={staff.avatar_url || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150"}
-                    alt={staff.name}
-                    className="w-10 h-10 rounded-full object-cover border border-zinc-700"
-                  />
-                  <div>
-                    <h4 className="text-xs font-bold">{staff.name}</h4>
-                    <p className={`text-[10px] ${theme.textMuted}`}>{staff.role || "Frizer/Stilista"}</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              {teamMembers.map((staff) => {
+                const initial = staff.name?.trim().charAt(0).toUpperCase() || "?";
+                return (
+                  <div
+                    key={staff.id}
+                    className={`group overflow-hidden rounded-2xl border ${theme.border} ${theme.cardBg} transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl`}
+                  >
+                    <div className="aspect-[4/5] w-full overflow-hidden bg-black/20">
+                      {staff.avatar_url ? (
+                        <img
+                          src={staff.avatar_url}
+                          alt={staff.name}
+                          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        />
+                      ) : (
+                        <div
+                          className="flex h-full w-full items-center justify-center text-3xl font-black"
+                          style={{ backgroundColor: `${accentColor}33`, color: accentColor }}
+                        >
+                          {initial}
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-3 space-y-1">
+                      <h4 className="text-xs font-bold leading-tight">
+                        {staff.name}
+                        {staff.role && <span className={`font-normal ${theme.textMuted}`}> — {staff.role}</span>}
+                      </h4>
+                      <p className={`text-[10px] leading-snug ${theme.textMuted} line-clamp-3`}>
+                        {staff.bio?.trim() ||
+                          "Iskusan član našeg tima, posvećen kvalitetnoj usluzi i zadovoljstvu klijenata."}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -341,12 +412,12 @@ export default function ClientShopPage() {
         {hasValidCoords && (
           <div className={`p-6 ${theme.cardBg} border ${theme.border} rounded-3xl space-y-3`}>
             <h3 className={`text-xs font-bold uppercase tracking-wider ${theme.textMuted}`}>Lokacija Salona</h3>
-            <p className="text-xs">📍 {shop.address}</p>
+            <p className="text-xs">📍 {displayAddress}</p>
             <ShopMap
               latitude={Number(shop.latitude)}
               longitude={Number(shop.longitude)}
               shopName={shop.name}
-              address={shop.address || ""}
+              address={displayAddress || ""}
             />
           </div>
         )}

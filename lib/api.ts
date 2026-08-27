@@ -10,6 +10,7 @@ import type {
   BookingStatus,
   SlotInfo,
   Staff,
+  StaffServicePricing,
 } from "@/lib/types";
 
 const API_BASE_URL =
@@ -108,11 +109,11 @@ export function createShop(payload: ShopCreatePayload) {
   );
 }
 
-export function updateShopInfo(shopId: number, payload: { name?: string; description?: string; shop_type?: string; instagram?: string }) {
+export function updateShopInfo(shopId: number, payload: { name?: string; description?: string; shop_type?: string; instagram?: string; phone?: string }) {
   return request<Shop>(`/shops/${shopId}/info`, { method: "PATCH", body: JSON.stringify(payload) }, true);
 }
 
-export function updateShopLocation(shopId: number, payload: { address?: string; latitude?: number | null; longitude?: number | null }) {
+export function updateShopLocation(shopId: number, payload: { address?: string; full_address?: string; latitude?: number | null; longitude?: number | null }) {
   return request<Shop>(`/shops/${shopId}/location`, { method: "PATCH", body: JSON.stringify(payload) }, true);
 }
 
@@ -135,19 +136,21 @@ export function updateShopGallery(shopId: number, galleryImages: string[]) {
 export async function updateShop(shopId: number, payload: ShopUpdatePayload & { staff?: any[]; gallery_images?: string[] }) {
   let updatedShop: Shop | null = null;
 
-  if (payload.name !== undefined || payload.description !== undefined || payload.shop_type !== undefined || payload.instagram !== undefined) {
+  if (payload.name !== undefined || payload.description !== undefined || payload.shop_type !== undefined || payload.instagram !== undefined || payload.phone !== undefined) {
     updatedShop = await updateShopInfo(shopId, {
       name: payload.name,
       description: payload.description,
       shop_type: payload.shop_type,
       instagram: payload.instagram,
+      phone: payload.phone,
     });
   }
 
-  if (payload.address !== undefined || payload.latitude !== undefined || payload.longitude !== undefined) {
+  if (payload.address !== undefined || payload.full_address !== undefined || payload.latitude !== undefined || payload.longitude !== undefined) {
     const parseCoord = (val: any) => (val !== "" && val !== null && val !== undefined && !isNaN(Number(val))) ? Number(val) : null;
     updatedShop = await updateShopLocation(shopId, {
       address: payload.address,
+      full_address: payload.full_address,
       latitude: parseCoord(payload.latitude),
       longitude: parseCoord(payload.longitude),
     });
@@ -212,19 +215,53 @@ export async function getStaffForShop(shopId: number): Promise<Staff[]> {
   }
 }
 
-export function createStaff(payload: { name: string; role?: string; shop_id: number; avatar_url?: string }) {
+export function createStaff(payload: {
+  name: string;
+  role?: string;
+  shop_id: number;
+  avatar_url?: string;
+  bio?: string;
+  phone?: string;
+  email?: string;
+}) {
   return request<Staff>("/staff/", { method: "POST", body: JSON.stringify(payload) }, true);
 }
 
 export function updateStaff(
   staffId: number,
-  payload: { name?: string; role?: string; avatar_url?: string }
+  payload: { name?: string; role?: string; avatar_url?: string; bio?: string; phone?: string; email?: string }
 ) {
   return request<Staff>(`/staff/${staffId}`, { method: "PATCH", body: JSON.stringify(payload) }, true);
 }
 
 export function deleteStaff(staffId: number) {
   return request<void>(`/staff/${staffId}`, { method: "DELETE" }, true);
+}
+
+// ---------- Staff-specifične cijene usluga ----------
+
+export function getStaffServicePricing(staffId: number) {
+  return request<StaffServicePricing[]>(`/staff/${staffId}/services`);
+}
+
+export function upsertStaffServicePrice(
+  staffId: number,
+  serviceId: number,
+  payload: { price?: number | null; duration_minutes?: number | null }
+) {
+  return request<StaffServicePricing>(
+    `/staff/${staffId}/services/${serviceId}`,
+    { method: "PUT", body: JSON.stringify(payload) },
+    true
+  );
+}
+
+export function deleteStaffServicePrice(staffId: number, serviceId: number) {
+  return request<StaffServicePricing>(
+    `/staff/${staffId}/services/${serviceId}`,
+    { method: "DELETE" },
+    true
+  );
 }
 
 // ---------- Usluge ----------

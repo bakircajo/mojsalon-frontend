@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createShop } from "@/lib/api";
+import { createShop, getMyShops } from "@/lib/api";
 import MobilePreview from "@/components/MobilePreview";
 
 const THEMES = [
@@ -35,6 +35,14 @@ export default function OnboardingPage() {
     border_radius: 12,
     enabled_sections: ["services", "team", "gallery"],
   });
+
+  useEffect(() => {
+    getMyShops()
+      .then((shops) => {
+        if (shops.length > 0) router.replace("/admin");
+      })
+      .catch(() => {});
+  }, []);
 
   const updateForm = (key: string, value: any) => {
     setFormData((prev) => ({ ...prev, [key]: value }));

@@ -17,6 +17,7 @@ export interface Shop {
   created_at: string;
   shop_type: string;
   instagram: string | null;
+  phone?: string | null;
   theme: string;
   accent_color: string;
   font_family: string;
@@ -24,6 +25,7 @@ export interface Shop {
   enabled_sections: string[];
   is_published: boolean;
   address: string | null;
+  full_address?: string | null;
   latitude: number | null;
   longitude: number | null;
   working_hours: any | null;
@@ -49,6 +51,7 @@ export interface ShopUpdatePayload {
   is_active?: boolean;
   shop_type?: string;
   instagram?: string;
+  phone?: string;
   theme?: string;
   accent_color?: string;
   font_family?: string;
@@ -56,6 +59,7 @@ export interface ShopUpdatePayload {
   enabled_sections?: string[];
   is_published?: boolean;
   address?: string;
+  full_address?: string;
   latitude?: number | null;
   longitude?: number | null;
   working_hours?: any;
@@ -109,5 +113,19 @@ export interface Staff {
   name: string;
   role?: string;
   avatar_url?: string;
+  bio?: string | null;
+  phone?: string | null;
+  email?: string | null;
   shop_id?: number;
+}
+
+// Rezolvovana cijena/trajanje usluge za konkretnog radnika (override ako postoji, inače bazna vrijednost)
+export interface StaffServicePricing {
+  id: number;
+  title: string;
+  description: string | null;
+  price: number;
+  duration_minutes: number;
+  is_overridden: boolean;
+  is_active: boolean;
 }

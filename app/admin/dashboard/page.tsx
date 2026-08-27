@@ -7,17 +7,36 @@ import {
   getServicesForShop,
   createService,
   createStaff,
-  updateStaff,
-  deleteStaff,
   getStaffForShop,
   updateShop,
-  deleteShop,
   ApiError,
 } from "@/lib/api";
 import { clearToken } from "@/lib/auth";
-import type { Shop, Service } from "@/lib/types";
+import type { Shop, Service, Staff } from "@/lib/types";
 import AdminBookingsCalendar from "@/components/AdminBookingsCalendar";
 import ServicesGrid from "@/components/ServicesGrid";
+import StaffGrid from "@/components/StaffGrid";
+
+// Podrazumijevano radno vrijeme — mora odgovarati backend DEFAULT_WORKING_HOURS (app/models/shop.py)
+const DEFAULT_WORKING_HOURS: Record<string, { start: string; end: string; is_working: boolean }> = {
+  monday: { start: "08:00", end: "16:00", is_working: true },
+  tuesday: { start: "08:00", end: "16:00", is_working: true },
+  wednesday: { start: "08:00", end: "16:00", is_working: true },
+  thursday: { start: "08:00", end: "16:00", is_working: true },
+  friday: { start: "08:00", end: "16:00", is_working: true },
+  saturday: { start: "08:00", end: "14:00", is_working: true },
+  sunday: { start: "00:00", end: "00:00", is_working: false },
+};
+
+const DAY_LABELS: [string, string][] = [
+  ["monday", "Ponedjeljak"],
+  ["tuesday", "Utorak"],
+  ["wednesday", "Srijeda"],
+  ["thursday", "Četvrtak"],
+  ["friday", "Petak"],
+  ["saturday", "Subota"],
+  ["sunday", "Nedjelja"],
+];
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -40,28 +59,31 @@ export default function AdminDashboard() {
 
   // Unosi za Galeriju i Uposlenike
   const [galleryInput, setGalleryInput] = useState("");
-  const [editingStaffId, setEditingStaffId] = useState<number | null>(null);
   const [staffName, setStaffName] = useState("");
   const [staffRole, setStaffRole] = useState("");
   const [staffAvatarUrl, setStaffAvatarUrl] = useState("");
-  const [staffList, setStaffList] = useState<{ id: number; name: string; role?: string; avatar_url?: string }[]>([]);
+  const [staffBio, setStaffBio] = useState("");
+  const [staffPhone, setStaffPhone] = useState("");
+  const [staffEmail, setStaffEmail] = useState("");
+  const [staffList, setStaffList] = useState<Staff[]>([]);
   const [staffSaving, setStaffSaving] = useState(false);
 
   // Forma za postavke salona
   const [shopSettings, setShopSettings] = useState({
     name: "",
     address: "",
+    full_address: "",
     phone: "",
     instagram: "",
     latitude: "",
     longitude: "",
     theme: "noir",
     accent_color: "#F59E0B",
-    work_start: "09:00",
-    work_end: "17:00",
-    work_days: "Pon-Sub",
     gallery_images: [] as string[],
   });
+  const [workingHours, setWorkingHours] = useState<
+    Record<string, { start: string; end: string; is_working: boolean }>
+  >(DEFAULT_WORKING_HOURS);
   const [savingSettings, setSavingSettings] = useState(false);
 
   useEffect(() => {
@@ -100,17 +122,22 @@ export default function AdminDashboard() {
     setShopSettings({
       name: selectedShop.name || "",
       address: selectedShop.address || "",
-      phone: (selectedShop as any).phone || "",
+      full_address: selectedShop.full_address || "",
+      phone: selectedShop.phone || "",
       instagram: selectedShop.instagram || "",
       latitude: selectedShop.latitude ? String(selectedShop.latitude) : "",
       longitude: selectedShop.longitude ? String(selectedShop.longitude) : "",
       theme: selectedShop.theme || "noir",
       accent_color: selectedShop.accent_color || "#F59E0B",
-      work_start: (selectedShop as any).work_start || "09:00",
-      work_end: (selectedShop as any).work_end || "17:00",
-      work_days: (selectedShop as any).work_days || "Pon-Sub",
       gallery_images: parsedGallery,
     });
+
+    const shopWorkingHours = selectedShop.working_hours;
+    if (shopWorkingHours && typeof shopWorkingHours === "object" && Object.keys(shopWorkingHours).length > 0) {
+      setWorkingHours({ ...DEFAULT_WORKING_HOURS, ...shopWorkingHours });
+    } else {
+      setWorkingHours(DEFAULT_WORKING_HOURS);
+    }
 
     async function loadShopData() {
       try {
@@ -127,33 +154,6 @@ export default function AdminDashboard() {
 
     loadShopData();
   }, [selectedShop?.id]);
-
-  const handleDeleteShopClick = async () => {
-    if (!selectedShop) return;
-
-    const confirmDelete = confirm(
-      `Jeste li sigurni da želite obrisati salon "${selectedShop.name}"?\n\nOva akcija je TRAJNA i obrisat će sve povezane rezervacije, usluge i radnike.`
-    );
-
-    if (!confirmDelete) return;
-
-    try {
-      await deleteShop(selectedShop.id);
-
-      const updatedShops = shops.filter((s) => s.id !== selectedShop.id);
-      setShops(updatedShops);
-
-      if (updatedShops.length > 0) {
-        setSelectedShop(updatedShops[0]);
-      } else {
-        setSelectedShop(null);
-      }
-
-      alert("Salon je uspješno obrisan!");
-    } catch (err: any) {
-      alert(err?.message || "Greška pri brisanju salona.");
-    }
-  };
 
   const handleAddressChange = async (query: string) => {
     setShopSettings((prev) => ({ ...prev, address: query }));
@@ -215,55 +215,26 @@ export default function AdminDashboard() {
 
     setStaffSaving(true);
     try {
-      if (editingStaffId) {
-        const updated = await updateStaff(editingStaffId, {
-          name: staffName.trim(),
-          role: staffRole.trim() || "Frizer / Barber",
-          avatar_url: staffAvatarUrl.trim() || undefined,
-        });
-        setStaffList((prev) => prev.map((s) => (s.id === editingStaffId ? updated : s)));
-        setEditingStaffId(null);
-      } else {
-        const created = await createStaff({
-          shop_id: selectedShop.id,
-          name: staffName.trim(),
-          role: staffRole.trim() || "Frizer / Barber",
-          avatar_url: staffAvatarUrl.trim() || undefined,
-        });
-        setStaffList((prev) => [...prev, created]);
-      }
+      const created = await createStaff({
+        shop_id: selectedShop.id,
+        name: staffName.trim(),
+        role: staffRole.trim() || "Frizer / Barber",
+        avatar_url: staffAvatarUrl.trim() || undefined,
+        bio: staffBio.trim() || undefined,
+        phone: staffPhone.trim() || undefined,
+        email: staffEmail.trim() || undefined,
+      });
+      setStaffList((prev) => [...prev, created]);
       setStaffName("");
       setStaffRole("");
       setStaffAvatarUrl("");
+      setStaffBio("");
+      setStaffPhone("");
+      setStaffEmail("");
     } catch (err) {
-      alert(editingStaffId ? "Greška pri izmjeni uposlenika." : "Greška pri dodavanju uposlenika.");
+      alert("Greška pri dodavanju uposlenika.");
     } finally {
       setStaffSaving(false);
-    }
-  };
-
-  const handleEditStaffClick = (person: { id: number; name: string; role?: string; avatar_url?: string }) => {
-    setEditingStaffId(person.id);
-    setStaffName(person.name);
-    setStaffRole(person.role || "");
-    setStaffAvatarUrl(person.avatar_url || "");
-  };
-
-  const handleCancelStaffEdit = () => {
-    setEditingStaffId(null);
-    setStaffName("");
-    setStaffRole("");
-    setStaffAvatarUrl("");
-  };
-
-  const handleRemoveStaff = async (staffId: number) => {
-    if (!confirm("Da li ste sigurni da želite obrisati ovog uposlenika?")) return;
-    try {
-      await deleteStaff(staffId);
-      setStaffList((prev) => prev.filter((s) => s.id !== staffId));
-      if (editingStaffId === staffId) handleCancelStaffEdit();
-    } catch (err) {
-      alert("Greška pri brisanju uposlenika.");
     }
   };
 
@@ -305,17 +276,16 @@ export default function AdminDashboard() {
       const updatedShop = await updateShop(selectedShop.id, {
         name: shopSettings.name,
         address: shopSettings.address,
+        full_address: shopSettings.full_address,
         phone: shopSettings.phone,
         instagram: shopSettings.instagram,
         latitude: shopSettings.latitude ? parseFloat(shopSettings.latitude) : null,
         longitude: shopSettings.longitude ? parseFloat(shopSettings.longitude) : null,
         theme: shopSettings.theme,
         accent_color: shopSettings.accent_color,
-        work_start: shopSettings.work_start,
-        work_end: shopSettings.work_end,
-        work_days: shopSettings.work_days,
+        working_hours: workingHours,
         gallery_images: shopSettings.gallery_images,
-      } as any);
+      });
 
       setSelectedShop(updatedShop);
       setShops((prev) => prev.map((s) => (s.id === updatedShop.id ? updatedShop : s)));
@@ -397,13 +367,6 @@ export default function AdminDashboard() {
               </select>
             )}
 
-            <button
-              onClick={() => router.push("/onboarding")}
-              className="px-3 py-2 bg-black text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition-colors"
-            >
-              + Novi salon
-            </button>
-
             <a
               href={`/${(selectedShop as any).slug}`}
               target="_blank"
@@ -412,15 +375,6 @@ export default function AdminDashboard() {
             >
               Javna stranica ↗
             </a>
-
-            {/* DUGME ZA BRISANJE SALONA */}
-            <button
-              onClick={handleDeleteShopClick}
-              className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-1"
-              title="Trajno obriši salon"
-            >
-              🗑️ Obriši salon
-            </button>
 
             <button
               onClick={handleLogout}
@@ -530,7 +484,7 @@ export default function AdminDashboard() {
 
             <div className="md:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-6">
               <h2 className="text-lg font-semibold mb-4 text-gray-900">Postojeće Usluge</h2>
-              <ServicesGrid services={services} onChange={setServices} />
+              <ServicesGrid services={services} onChange={setServices} staffList={staffList} />
             </div>
           </div>
         )}
@@ -559,14 +513,17 @@ export default function AdminDashboard() {
                   </div>
 
                   <div className="relative">
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Adresa Salona</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Lokacija (za mapu)</label>
                     <input
                       type="text"
                       value={shopSettings.address}
                       onChange={(e) => handleAddressChange(e.target.value)}
-                      placeholder="Unesite ulicu i broj..."
+                      placeholder="Unesite grad ili naselje..."
                       className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
                     />
+                    <p className="text-[11px] text-gray-400 mt-1">
+                      Koristi se samo za postavljanje pina na mapi ispod. Za adresu koja se prikazuje klijentima, popunite polje &quot;Puna adresa&quot;.
+                    </p>
 
                     {isSearchingAddress && (
                       <p className="text-xs text-gray-400 mt-1">Pretražujem lokacije...</p>
@@ -585,6 +542,20 @@ export default function AdminDashboard() {
                         ))}
                       </ul>
                     )}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Puna adresa (prikazuje se klijentima)</label>
+                    <input
+                      type="text"
+                      value={shopSettings.full_address}
+                      onChange={(e) => setShopSettings({ ...shopSettings, full_address: e.target.value })}
+                      placeholder="npr. Ulica Alije Izetbegovića 25, 72240 Kakanj"
+                      className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
+                    />
+                    <p className="text-[11px] text-gray-400 mt-1">
+                      Puna adresa sa ulicom i brojem — ovo tačno vide klijenti na javnoj stranici.
+                    </p>
                   </div>
 
                   <div>
@@ -616,35 +587,49 @@ export default function AdminDashboard() {
                 <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider border-b pb-2">
                   2. Radno Vrijeme
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Početak Rada</label>
-                    <input
-                      type="time"
-                      value={shopSettings.work_start}
-                      onChange={(e) => setShopSettings({ ...shopSettings, work_start: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Kraj Rada</label>
-                    <input
-                      type="time"
-                      value={shopSettings.work_end}
-                      onChange={(e) => setShopSettings({ ...shopSettings, work_end: e.target.value })}
-                      className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Radni Dani</label>
-                    <input
-                      type="text"
-                      value={shopSettings.work_days}
-                      onChange={(e) => setShopSettings({ ...shopSettings, work_days: e.target.value })}
-                      placeholder="npr. Pon - Pet"
-                      className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
-                    />
-                  </div>
+                <div className="space-y-2">
+                  {DAY_LABELS.map(([key, label]) => {
+                    const day = workingHours[key] || DEFAULT_WORKING_HOURS[key];
+                    return (
+                      <div
+                        key={key}
+                        className="grid grid-cols-3 items-center gap-3 p-2.5 rounded-lg border border-gray-100 bg-gray-50/50"
+                      >
+                        <label className="flex items-center gap-2 text-sm font-medium text-gray-800 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={day.is_working}
+                            onChange={(e) =>
+                              setWorkingHours((prev) => ({
+                                ...prev,
+                                [key]: { ...day, is_working: e.target.checked },
+                              }))
+                            }
+                            className="h-4 w-4 rounded border-gray-300 text-black focus:ring-black cursor-pointer"
+                          />
+                          {label}
+                        </label>
+                        <input
+                          type="time"
+                          value={day.start}
+                          disabled={!day.is_working}
+                          onChange={(e) =>
+                            setWorkingHours((prev) => ({ ...prev, [key]: { ...day, start: e.target.value } }))
+                          }
+                          className="px-2 py-1.5 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black disabled:bg-gray-100 disabled:text-gray-400"
+                        />
+                        <input
+                          type="time"
+                          value={day.end}
+                          disabled={!day.is_working}
+                          onChange={(e) =>
+                            setWorkingHours((prev) => ({ ...prev, [key]: { ...day, end: e.target.value } }))
+                          }
+                          className="px-2 py-1.5 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black disabled:bg-gray-100 disabled:text-gray-400"
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -708,71 +693,45 @@ export default function AdminDashboard() {
                     onChange={(e) => setStaffRole(e.target.value)}
                     className="px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
                   />
-                  <div className="flex gap-2">
-                    <input
-                      type="url"
-                      placeholder="URL slike (opcionalno)..."
-                      value={staffAvatarUrl}
-                      onChange={(e) => setStaffAvatarUrl(e.target.value)}
-                      className="flex-1 px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
-                    />
-                    <button
-                      type="button"
-                      disabled={staffSaving}
-                      onClick={handleSaveStaff}
-                      className="px-3 py-2 bg-gray-900 hover:bg-black text-white text-xs font-semibold rounded-lg transition-colors shrink-0"
-                    >
-                      {staffSaving ? "..." : editingStaffId ? "Sačuvaj" : "Dodaj"}
-                    </button>
-                    {editingStaffId && (
-                      <button
-                        type="button"
-                        onClick={handleCancelStaffEdit}
-                        className="px-2 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs rounded-lg"
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </div>
+                  <input
+                    type="url"
+                    placeholder="URL slike (opcionalno)..."
+                    value={staffAvatarUrl}
+                    onChange={(e) => setStaffAvatarUrl(e.target.value)}
+                    className="px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
+                  />
+                  <input
+                    type="tel"
+                    placeholder="Telefon (opcionalno)..."
+                    value={staffPhone}
+                    onChange={(e) => setStaffPhone(e.target.value)}
+                    className="px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
+                  />
+                  <input
+                    type="email"
+                    placeholder="Email (opcionalno)..."
+                    value={staffEmail}
+                    onChange={(e) => setStaffEmail(e.target.value)}
+                    className="px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
+                  />
+                  <button
+                    type="button"
+                    disabled={staffSaving}
+                    onClick={handleSaveStaff}
+                    className="px-3 py-2 bg-gray-900 hover:bg-black text-white text-xs font-semibold rounded-lg transition-colors"
+                  >
+                    {staffSaving ? "..." : "Dodaj"}
+                  </button>
                 </div>
+                <textarea
+                  placeholder="Kratka biografija (iskustvo, specijalnosti)... opcionalno"
+                  value={staffBio}
+                  onChange={(e) => setStaffBio(e.target.value)}
+                  rows={2}
+                  className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black resize-none"
+                />
 
-                {staffList.length > 0 && (
-                  <div className="divide-y border rounded-lg p-2 bg-gray-50/50">
-                    {staffList.map((person) => (
-                      <div key={person.id} className="py-2 px-2 flex justify-between items-center text-sm">
-                        <div className="flex items-center gap-3">
-                          {person.avatar_url ? (
-                            <img src={person.avatar_url} alt={person.name} className="w-8 h-8 rounded-full object-cover" />
-                          ) : (
-                            <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-600">
-                              {person.name.charAt(0)}
-                            </div>
-                          )}
-                          <div>
-                            <p className="font-semibold text-gray-900">{person.name}</p>
-                            <p className="text-xs text-gray-500">{person.role || "Uposlenik"}</p>
-                          </div>
-                        </div>
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleEditStaffClick(person)}
-                            className="text-xs text-blue-600 hover:underline"
-                          >
-                            Uredi
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveStaff(person.id)}
-                            className="text-xs text-red-600 hover:underline"
-                          >
-                            Obriši
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <StaffGrid staffList={staffList} onChange={setStaffList} />
               </div>
 
               {/* DUGME ZA SPASAVANJE */}
@@ -783,14 +742,6 @@ export default function AdminDashboard() {
                   className="px-6 py-2.5 bg-black hover:bg-gray-800 text-white font-medium text-sm rounded-lg transition-colors disabled:opacity-50"
                 >
                   {savingSettings ? "Spašavanje..." : "Sačuvaj Sve Postavke"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleDeleteShopClick}
-                  className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 font-medium text-xs rounded-lg transition-colors"
-                >
-                  🗑️ Trajno Obriši Ovaj Salon
                 </button>
               </div>
             </form>

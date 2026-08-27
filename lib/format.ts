@@ -68,6 +68,17 @@ export function isShopOpenNow(workingHours: any): boolean {
   return minutesNow >= startMinutes && minutesNow < endMinutes;
 }
 
+// Vraća radno vrijeme salona za tekući dan kao "HH:MM–HH:MM", ili "Zatvoreno" ako ne radi danas.
+export function getTodayHoursLabel(workingHours: any): string {
+  if (!workingHours || typeof workingHours !== "object") return "Zatvoreno";
+
+  const dayKey = DAY_KEYS_BY_JS_INDEX[new Date().getDay()];
+  const todayHours = workingHours[dayKey];
+  if (!todayHours || !todayHours.is_working) return "Zatvoreno";
+
+  return `${todayHours.start || "08:00"}–${todayHours.end || "16:00"}`;
+}
+
 export const STATUS_LABELS: Record<string, string> = {
   PENDING: "Na čekanju",
   CONFIRMED: "Potvrđeno",
