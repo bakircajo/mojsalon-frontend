@@ -78,13 +78,6 @@ async function request<T>(
 
 // ---------- Auth ----------
 
-export function registerUser(email: string, password: string) {
-  return request<User>("/auth/register", {
-    method: "POST",
-    body: JSON.stringify({ email, password }),
-  });
-}
-
 export async function loginUser(email: string, password: string) {
   const body = new URLSearchParams();
   body.set("username", email);
@@ -97,6 +90,36 @@ export async function loginUser(email: string, password: string) {
 
 export function getMe() {
   return request<User>("/auth/me", {}, true);
+}
+
+export function updateMyProfile(payload: {
+  current_password: string;
+  new_email?: string;
+  new_password?: string;
+}) {
+  return request<User>(
+    "/auth/me",
+    { method: "PUT", body: JSON.stringify(payload) },
+    true
+  );
+}
+
+// ---------- Obavezna promjena kredencijala pri prvoj prijavi ----------
+
+export function requestFirstLoginOtp(newEmail: string, newPassword: string) {
+  return request<{ detail: string }>(
+    "/auth/first-login/request-otp",
+    { method: "POST", body: JSON.stringify({ new_email: newEmail, new_password: newPassword }) },
+    true
+  );
+}
+
+export function verifyFirstLoginOtp(otpCode: string) {
+  return request<User>(
+    "/auth/first-login/verify-otp",
+    { method: "POST", body: JSON.stringify({ otp_code: otpCode }) },
+    true
+  );
 }
 
 // ---------- Saloni ----------

@@ -7,12 +7,20 @@ export default function PublicHeader() {
         <Link href="/" className="font-display text-xl italic tracking-tight text-ink">
           brand.ba
         </Link>
-        <Link
-          href="/admin/login"
-          className="focus-ring font-mono text-xs uppercase tracking-wider text-muted hover:text-ink"
-        >
-          Za vlasnike salona →
-        </Link>
+        <div className="flex items-center gap-5">
+          <Link
+            href="/admin/login"
+            className="focus-ring font-mono text-xs uppercase tracking-wider text-muted hover:text-ink"
+          >
+            Za vlasnike salona →
+          </Link>
+          <Link
+            href="/admin/cp"
+            className="focus-ring font-mono text-xs uppercase tracking-wider text-muted/60 hover:text-ink"
+          >
+            SuperAdmin
+          </Link>
+        </div>
       </div>
     </header>
   );

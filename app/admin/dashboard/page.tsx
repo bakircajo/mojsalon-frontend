@@ -16,6 +16,9 @@ import type { Shop, Service, Staff } from "@/lib/types";
 import AdminBookingsCalendar from "@/components/AdminBookingsCalendar";
 import ServicesGrid from "@/components/ServicesGrid";
 import StaffGrid from "@/components/StaffGrid";
+import AccountSettings from "@/components/AccountSettings";
+import FirstLoginSecurityModal from "@/components/FirstLoginSecurityModal";
+import { useAuth } from "@/components/AuthProvider";
 
 // Podrazumijevano radno vrijeme — mora odgovarati backend DEFAULT_WORKING_HOURS (app/models/shop.py)
 const DEFAULT_WORKING_HOURS: Record<string, { start: string; end: string; is_working: boolean }> = {
@@ -40,7 +43,8 @@ const DAY_LABELS: [string, string][] = [
 
 export default function AdminDashboard() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"bookings" | "services" | "settings">("bookings");
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<"bookings" | "services" | "settings" | "account">("bookings");
   const [shops, setShops] = useState<Shop[]>([]);
   const [selectedShop, setSelectedShop] = useState<Shop | null>(null);
 
@@ -336,6 +340,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
+      {user?.requires_credential_update && <FirstLoginSecurityModal />}
       <div className="max-w-6xl mx-auto space-y-6">
        {/* Header / Navigacija */}
         <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
@@ -408,6 +413,14 @@ export default function AdminDashboard() {
                 }`}
               >
                 Postavke
+              </button>
+              <button
+                onClick={() => setActiveTab("account")}
+                className={`px-4 py-1.5 rounded-md font-medium text-sm transition-colors ${
+                  activeTab === "account" ? "bg-white text-black shadow-sm" : "text-gray-600 hover:text-black"
+                }`}
+              >
+                Moj Nalog
               </button>
             </div>
           </div>
@@ -747,6 +760,9 @@ export default function AdminDashboard() {
             </form>
           </div>
         )}
+
+        {/* TAB 4: MOJ NALOG */}
+        {activeTab === "account" && <AccountSettings />}
       </div>
     </div>
   );

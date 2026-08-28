@@ -5,6 +5,8 @@ export interface User {
   email: string;
   is_active: boolean;
   created_at: string;
+  requires_credential_update?: boolean;
+  email_verified?: boolean;
 }
 
 export interface Shop {
