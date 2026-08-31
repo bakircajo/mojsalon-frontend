@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 
@@ -54,6 +54,44 @@ export default function ClientShopPage() {
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [isSlideshowHovered, setIsSlideshowHovered] = useState(false);
+
+  // Horizontalni scroll indikator za sekciju "Naš Tim"
+  const teamScrollRef = useRef<HTMLDivElement>(null);
+  const [teamScrollState, setTeamScrollState] = useState({
+    hasOverflow: false,
+    canLeft: false,
+    canRight: false,
+    thumbPercent: 100,
+    thumbOffsetPercent: 0,
+  });
+
+  const updateTeamScrollState = useCallback(() => {
+    const el = teamScrollRef.current;
+    if (!el) return;
+    const maxScroll = el.scrollWidth - el.clientWidth;
+    const hasOverflow = maxScroll > 4;
+    const progress = hasOverflow ? el.scrollLeft / maxScroll : 0;
+    const thumbPercent = Math.min(100, Math.max(15, (el.clientWidth / el.scrollWidth) * 100));
+    setTeamScrollState({
+      hasOverflow,
+      canLeft: hasOverflow && el.scrollLeft > 4,
+      canRight: hasOverflow && el.scrollLeft < maxScroll - 4,
+      thumbPercent,
+      thumbOffsetPercent: progress * (100 - thumbPercent),
+    });
+  }, []);
+
+  useEffect(() => {
+    updateTeamScrollState();
+    window.addEventListener("resize", updateTeamScrollState);
+    return () => window.removeEventListener("resize", updateTeamScrollState);
+  }, [teamMembers, updateTeamScrollState]);
+
+  function scrollTeamBy(direction: 1 | -1) {
+    const el = teamScrollRef.current;
+    if (!el) return;
+    el.scrollBy({ left: direction * el.clientWidth * 0.8, behavior: "smooth" });
+  }
 
   useEffect(() => {
     if (!rawSlug) return;
@@ -181,9 +219,14 @@ export default function ClientShopPage() {
       {/* Header */}
       <header className={`border-b ${theme.border} ${theme.cardBg} backdrop-blur-md sticky top-0 z-50`}>
         <div className="max-w-4xl mx-auto px-6 py-4 flex justify-between items-center">
-          <h1 className="text-lg font-black uppercase tracking-wider" style={{ color: accentColor }}>
-            {shop.name}
-          </h1>
+          <div className="flex items-center gap-2.5">
+            {shop.logo_url && (
+              <img src={shop.logo_url} alt={shop.name} className="h-8 w-8 rounded-full object-cover" />
+            )}
+            <h1 className="text-lg font-black uppercase tracking-wider" style={{ color: accentColor }}>
+              {shop.name}
+            </h1>
+          </div>
           {shop.instagram && (
             <a
               href={`https://instagram.com/${shop.instagram.replace("@", "")}`}
@@ -348,7 +391,7 @@ export default function ClientShopPage() {
           </div>
         )}
 
-        {/* Naš Tim — kartice sa slikom, ulogom i kratkim CV opisom (odabir majstora ide kroz REZERVIŠI modal ispod) */}
+        {/* Naš Tim — horizontalni scroll sa indikatorom (odabir majstora ide kroz REZERVIŠI modal ispod) */}
         <div className="space-y-3">
           <h3 className={`text-xs font-bold uppercase tracking-wider ${theme.textMuted}`}>Naš Tim</h3>
           {teamMembers.length === 0 ? (
@@ -356,43 +399,82 @@ export default function ClientShopPage() {
               Trenutno nema unesenih majstora u salonu.
             </p>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-              {teamMembers.map((staff) => {
-                const initial = staff.name?.trim().charAt(0).toUpperCase() || "?";
-                return (
+            <div className="relative">
+              {teamScrollState.canLeft && (
+                <button
+                  onClick={() => scrollTeamBy(-1)}
+                  aria-label="Pomjeri tim ulijevo"
+                  className={`absolute left-1 top-[calc(50%-14px)] z-10 flex h-8 w-8 items-center justify-center rounded-full border ${theme.border} ${theme.cardBg} shadow-lg transition-transform hover:scale-105`}
+                >
+                  ‹
+                </button>
+              )}
+              {teamScrollState.canRight && (
+                <button
+                  onClick={() => scrollTeamBy(1)}
+                  aria-label="Pomjeri tim udesno"
+                  className={`absolute right-1 top-[calc(50%-14px)] z-10 flex h-8 w-8 items-center justify-center rounded-full border ${theme.border} ${theme.cardBg} shadow-lg transition-transform hover:scale-105`}
+                >
+                  ›
+                </button>
+              )}
+
+              <div
+                ref={teamScrollRef}
+                onScroll={updateTeamScrollState}
+                className="no-scrollbar flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-smooth pb-1"
+              >
+                {teamMembers.map((staff) => {
+                  const initial = staff.name?.trim().charAt(0).toUpperCase() || "?";
+                  return (
+                    <div
+                      key={staff.id}
+                      className={`group w-40 shrink-0 snap-start overflow-hidden rounded-2xl border sm:w-48 ${theme.border} ${theme.cardBg} transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl`}
+                    >
+                      <div className="aspect-[4/5] w-full overflow-hidden bg-black/20">
+                        {staff.avatar_url ? (
+                          <img
+                            src={staff.avatar_url}
+                            alt={staff.name}
+                            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                          />
+                        ) : (
+                          <div
+                            className="flex h-full w-full items-center justify-center text-3xl font-black"
+                            style={{ backgroundColor: `${accentColor}33`, color: accentColor }}
+                          >
+                            {initial}
+                          </div>
+                        )}
+                      </div>
+                      <div className="p-3 space-y-1">
+                        <h4 className="text-xs font-bold leading-tight">
+                          {staff.name}
+                          {staff.role && <span className={`font-normal ${theme.textMuted}`}> — {staff.role}</span>}
+                        </h4>
+                        <p className={`text-[10px] leading-snug ${theme.textMuted} line-clamp-3`}>
+                          {staff.bio?.trim() ||
+                            "Iskusan član našeg tima, posvećen kvalitetnoj usluzi i zadovoljstvu klijenata."}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Indikator horizontalnog skrolovanja — traka koja pokazuje poziciju i koliko tima još ima */}
+              {teamScrollState.hasOverflow && (
+                <div className={`mt-2 h-1 w-full overflow-hidden rounded-full ${theme.border} border`}>
                   <div
-                    key={staff.id}
-                    className={`group overflow-hidden rounded-2xl border ${theme.border} ${theme.cardBg} transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl`}
-                  >
-                    <div className="aspect-[4/5] w-full overflow-hidden bg-black/20">
-                      {staff.avatar_url ? (
-                        <img
-                          src={staff.avatar_url}
-                          alt={staff.name}
-                          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                        />
-                      ) : (
-                        <div
-                          className="flex h-full w-full items-center justify-center text-3xl font-black"
-                          style={{ backgroundColor: `${accentColor}33`, color: accentColor }}
-                        >
-                          {initial}
-                        </div>
-                      )}
-                    </div>
-                    <div className="p-3 space-y-1">
-                      <h4 className="text-xs font-bold leading-tight">
-                        {staff.name}
-                        {staff.role && <span className={`font-normal ${theme.textMuted}`}> — {staff.role}</span>}
-                      </h4>
-                      <p className={`text-[10px] leading-snug ${theme.textMuted} line-clamp-3`}>
-                        {staff.bio?.trim() ||
-                          "Iskusan član našeg tima, posvećen kvalitetnoj usluzi i zadovoljstvu klijenata."}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })}
+                    className="h-full rounded-full transition-all duration-150"
+                    style={{
+                      width: `${teamScrollState.thumbPercent}%`,
+                      marginLeft: `${teamScrollState.thumbOffsetPercent}%`,
+                      backgroundColor: accentColor,
+                    }}
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>

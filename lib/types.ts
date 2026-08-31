@@ -25,6 +25,7 @@ export interface Shop {
   font_family: string;
   border_radius: number;
   enabled_sections: string[];
+  logo_url?: string | null;
   is_published: boolean;
   address: string | null;
   full_address?: string | null;
@@ -34,14 +35,20 @@ export interface Shop {
   gallery_images?: string[] | string | null; // NOVO
 }
 // -------------------------------------------------------------------
-// 1. KREIRANJE SALONA (Minimalni Payload prema novom DTO-u na backendu)
-// Uklonjen slug i sve postavke dizajna i radnog vremena.
+// 1. KREIRANJE SALONA (Onboarding Wizard Payload)
 // -------------------------------------------------------------------
 export interface ShopCreatePayload {
   name: string;
-  address: string;
+  address?: string;
   shop_type?: string;
   description?: string;
+  instagram?: string;
+  theme?: string;
+  accent_color?: string;
+  font_family?: string;
+  border_radius?: number;
+  enabled_sections?: string[];
+  logo_url?: string;
 }
 
 // -------------------------------------------------------------------
@@ -59,6 +66,7 @@ export interface ShopUpdatePayload {
   font_family?: string;
   border_radius?: number;
   enabled_sections?: string[];
+  logo_url?: string;
   is_published?: boolean;
   address?: string;
   full_address?: string;
@@ -77,7 +85,18 @@ export interface Service {
   duration_minutes: number;
   is_active: boolean;
   shop_id: number;
+  is_shop_wide: boolean;
   created_at: string;
+}
+
+export interface ServiceCreatePayload {
+  title: string;
+  description: string;
+  price: number;
+  duration_minutes: number;
+  shop_id: number;
+  staff_id?: number;
+  apply_to_all_staff?: boolean;
 }
 
 export interface Booking {
@@ -130,4 +149,5 @@ export interface StaffServicePricing {
   duration_minutes: number;
   is_overridden: boolean;
   is_active: boolean;
+  is_shop_wide: boolean;
 }

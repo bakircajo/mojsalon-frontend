@@ -15,7 +15,7 @@ import {
 } from "date-fns";
 import { bs } from "date-fns/locale";
 import { getShopBookings } from "@/lib/api";
-import type { Booking, Service } from "@/lib/types";
+import type { Booking, Service, Staff } from "@/lib/types";
 import BookingDetailsModal from "./BookingDetailsModal";
 
 type ViewMode = "month" | "week" | "3months";
@@ -39,15 +39,18 @@ const WEEKDAY_LABELS = ["Pon", "Uto", "Sri", "Čet", "Pet", "Sub", "Ned"];
 export default function AdminBookingsCalendar({
   shopId,
   services,
+  staffList = [],
 }: {
   shopId: number;
   services: Service[];
+  staffList?: Staff[];
 }) {
   const [view, setView] = useState<ViewMode>("month");
   const [anchor, setAnchor] = useState(new Date());
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [selectedStaffId, setSelectedStaffId] = useState<number | null>(null);
 
   const range = useMemo(() => {
     if (view === "week") {
@@ -71,6 +74,7 @@ export default function AdminBookingsCalendar({
     getShopBookings(shopId, {
       startDate: format(range.start, "yyyy-MM-dd"),
       endDate: format(range.end, "yyyy-MM-dd"),
+      staffId: selectedStaffId ?? undefined,
     })
       .then((data) => {
         if (!cancelled) setBookings(data);
@@ -86,7 +90,7 @@ export default function AdminBookingsCalendar({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shopId, range.start.getTime(), range.end.getTime()]);
+  }, [shopId, range.start.getTime(), range.end.getTime(), selectedStaffId]);
 
   function shiftAnchor(dir: 1 | -1) {
     if (view === "week") setAnchor((d) => addWeeks(d, dir));
@@ -163,6 +167,21 @@ export default function AdminBookingsCalendar({
           </button>
           <span className="ml-2 text-sm font-semibold capitalize text-gray-900">{label}</span>
         </div>
+
+        {staffList.length > 0 && (
+          <select
+            value={selectedStaffId ?? ""}
+            onChange={(e) => setSelectedStaffId(e.target.value ? Number(e.target.value) : null)}
+            className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 outline-none focus:ring-1 focus:ring-black"
+          >
+            <option value="">Svi Radnici</option>
+            {staffList.map((person) => (
+              <option key={person.id} value={person.id}>
+                {person.name}
+              </option>
+            ))}
+          </select>
+        )}
 
         <div className="flex rounded-lg border border-gray-200 bg-gray-50 p-1 text-xs font-medium">
           {(["month", "week", "3months"] as ViewMode[]).map((v) => (

@@ -10,17 +10,19 @@ export default function EditStaffPriceModal({
   service,
   onClose,
   onSaved,
+  onRemoved,
 }: {
   staffId: number;
   staffName: string;
   service: StaffServicePricing;
   onClose: () => void;
   onSaved: (updated: StaffServicePricing) => void;
+  onRemoved: () => void;
 }) {
   const [price, setPrice] = useState(String(service.price));
   const [durationMinutes, setDurationMinutes] = useState(String(service.duration_minutes));
   const [saving, setSaving] = useState(false);
-  const [reverting, setReverting] = useState(false);
+  const [removing, setRemoving] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -39,16 +41,16 @@ export default function EditStaffPriceModal({
     }
   }
 
-  async function handleRevert() {
-    if (!confirm(`Vratiti "${service.title}" na osnovnu cijenu (ukloniti posebnu cijenu za ${staffName})?`)) return;
-    setReverting(true);
+  async function handleRemove() {
+    if (!confirm(`Ukloniti uslugu "${service.title}" od radnika ${staffName}? Usluga se više neće prikazivati kod ovog radnika.`)) return;
+    setRemoving(true);
     try {
-      const updated = await deleteStaffServicePrice(staffId, service.id);
-      onSaved(updated);
+      await deleteStaffServicePrice(staffId, service.id);
+      onRemoved();
     } catch {
-      alert("Greška pri vraćanju na osnovnu cijenu.");
+      alert("Greška pri uklanjanju usluge od radnika.");
     } finally {
-      setReverting(false);
+      setRemoving(false);
     }
   }
 
@@ -107,16 +109,14 @@ export default function EditStaffPriceModal({
             </button>
           </div>
 
-          {service.is_overridden && (
-            <button
-              type="button"
-              onClick={handleRevert}
-              disabled={reverting}
-              className="w-full rounded-lg border border-red-200 py-2 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
-            >
-              {reverting ? "Vraćanje..." : "Vrati na osnovnu cijenu"}
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={handleRemove}
+            disabled={removing}
+            className="w-full rounded-lg border border-red-200 py-2 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+          >
+            {removing ? "Uklanjanje..." : `Ukloni od ${staffName}`}
+          </button>
         </form>
       </div>
     </div>

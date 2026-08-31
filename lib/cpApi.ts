@@ -69,6 +69,8 @@ export interface AdminUserSummary {
   created_at: string;
   requires_credential_update: boolean;
   email_verified: boolean;
+  failed_login_attempts: number;
+  lockout_until: string | null;
   shops: AdminShopSummary[];
 }
 
@@ -110,6 +112,12 @@ export interface CpResetPasswordResult {
 
 export function resetCpUserPassword(userId: number) {
   return cpRequest<CpResetPasswordResult>(`/superadmin/users/${userId}/reset-password`, {
+    method: "POST",
+  });
+}
+
+export function clearTimeoutCpUser(userId: number) {
+  return cpRequest<{ detail: string }>(`/superadmin/users/${userId}/clear-timeout`, {
     method: "POST",
   });
 }

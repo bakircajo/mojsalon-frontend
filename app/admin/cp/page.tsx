@@ -9,6 +9,7 @@ import {
   deleteCpUser,
   updateCpCredentials,
   resetCpUserPassword,
+  clearTimeoutCpUser,
   CpApiError,
   type AdminUserSummary,
 } from "@/lib/cpApi";
@@ -45,6 +46,8 @@ export default function ControlPanelPage() {
 
   const [revealedCredential, setRevealedCredential] = useState<{ email: string; password: string } | null>(null);
   const [resettingId, setResettingId] = useState<number | null>(null);
+  const [clearingTimeoutId, setClearingTimeoutId] = useState<number | null>(null);
+  const [nowTick, setNowTick] = useState(() => Date.now());
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newUsername, setNewUsername] = useState("");
@@ -76,6 +79,19 @@ export default function ControlPanelPage() {
     loadUsers().finally(() => setCheckingAuth(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Osvježava "preostalo vrijeme kazne" prikaz na svakih 15s, ali samo dok bar jedan
+  // korisnik ima aktivan lockout_until — nema smisla tikati u prazno.
+  const hasActiveTimeout = users.some((u) => u.lockout_until && new Date(u.lockout_until).getTime() > nowTick);
+  useEffect(() => {
+    if (!hasActiveTimeout) return;
+    const interval = setInterval(() => setNowTick(Date.now()), 15000);
+    return () => clearInterval(interval);
+  }, [hasActiveTimeout]);
+
+  function getRemainingMinutes(lockoutUntil: string): number {
+    return Math.max(0, Math.ceil((new Date(lockoutUntil).getTime() - nowTick) / 60000));
+  }
 
   async function handleLogin(e: FormEvent) {
     e.preventDefault();
@@ -147,6 +163,8 @@ export default function ControlPanelPage() {
           created_at: created.created_at,
           requires_credential_update: created.requires_credential_update,
           email_verified: created.email_verified,
+          failed_login_attempts: 0,
+          lockout_until: null,
           shops: [],
         },
       ]);
@@ -183,6 +201,24 @@ export default function ControlPanelPage() {
       alert(err instanceof CpApiError ? err.message : "Greška pri resetovanju lozinke.");
     } finally {
       setResettingId(null);
+    }
+  }
+
+  async function handleClearTimeout(userId: number, email: string) {
+    if (!confirm(`Poništiti kaznu za prijavu za "${email}"? Korisnik će odmah moći ponovo pokušati prijavu sa svojom postojećom lozinkom.`))
+      return;
+    setClearingTimeoutId(userId);
+    try {
+      await clearTimeoutCpUser(userId);
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === userId ? { ...u, lockout_until: null, failed_login_attempts: 0 } : u
+        )
+      );
+    } catch (err) {
+      alert(err instanceof CpApiError ? err.message : "Greška pri poništavanju kazne.");
+    } finally {
+      setClearingTimeoutId(null);
     }
   }
 
@@ -319,6 +355,8 @@ export default function ControlPanelPage() {
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {users.map((u) => {
                   const isExpanded = expandedUserId === u.id;
+                  const remainingMinutes = u.lockout_until ? getRemainingMinutes(u.lockout_until) : 0;
+                  const isTimedOut = remainingMinutes > 0;
                   return (
                     <div
                       key={u.id}
@@ -333,6 +371,15 @@ export default function ControlPanelPage() {
                             <p className="truncate text-sm font-bold">{u.email}</p>
                             <span
                               className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${
+                                isTimedOut
+                                  ? "bg-red-500/20 text-red-400"
+                                  : "bg-emerald-500/20 text-emerald-400"
+                              }`}
+                            >
+                              {isTimedOut ? "Pod kaznom" : "Aktivan"}
+                            </span>
+                            <span
+                              className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${
                                 u.email_verified
                                   ? "bg-emerald-500/20 text-emerald-400"
                                   : "bg-amber-500/20 text-amber-400"
@@ -344,6 +391,13 @@ export default function ControlPanelPage() {
                           <p className="mt-0.5 text-xs text-neutral-500">
                             Registrovan {formatDate(u.created_at)} • {u.shops.length}{" "}
                             {u.shops.length === 1 ? "salon" : "salona"}
+                            {isTimedOut ? (
+                              <> • kazna ističe za {remainingMinutes} {remainingMinutes === 1 ? "minutu" : "minuta"} ({u.failed_login_attempts} pokušaja)</>
+                            ) : (
+                              u.failed_login_attempts > 0 && (
+                                <> • {u.failed_login_attempts} neuspješnih pokušaja</>
+                              )
+                            )}
                           </p>
                         </div>
                         <span className="shrink-0 text-neutral-500">{isExpanded ? "▲" : "▼"}</span>
@@ -380,6 +434,16 @@ export default function ControlPanelPage() {
                                 </button>
                               </div>
                             ))
+                          )}
+
+                          {isTimedOut && (
+                            <button
+                              onClick={() => handleClearTimeout(u.id, u.email)}
+                              disabled={clearingTimeoutId === u.id}
+                              className="w-full rounded-lg bg-emerald-600 py-1.5 text-xs font-bold text-white transition-colors hover:bg-emerald-500 disabled:opacity-50"
+                            >
+                              {clearingTimeoutId === u.id ? "Poništavanje..." : "⏱️ Poništi Kaznu"}
+                            </button>
                           )}
 
                           <button

@@ -3,37 +3,43 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createShop, getMyShops } from "@/lib/api";
-import MobilePreview from "@/components/MobilePreview";
+import { INDUSTRIES, THEMES, ACCENT_COLORS, getIndustry } from "@/lib/industries";
+import BrowserPreview from "@/components/onboarding/BrowserPreview";
+import LogoUpload from "@/components/onboarding/LogoUpload";
 
-const THEMES = [
-  { id: "noir", name: "Noir", desc: "Tamno i odvažno — za barbershope", bg: "#09090B", text: "#FFFFFF", accent: "#D97706" },
-  { id: "steel", name: "Steel", desc: "Industrijski — za servise i radnje", bg: "#0F172A", text: "#F8FAFC", accent: "#3B82F6" },
-  { id: "royal", name: "Royal", desc: "Plavo i zlato — visoki luksuz", bg: "#0284C7", text: "#F8FAFC", accent: "#EAB308" },
-  { id: "forest", name: "Forest", desc: "Smaragdan ton — prirodna svježina", bg: "#064E3B", text: "#ECFDF5", accent: "#10B981" },
-  { id: "espresso", name: "Espresso", desc: "Topla kafa — uglađen stil", bg: "#1C1917", text: "#FAFAF9", accent: "#F97316" },
-  { id: "velvet", name: "Velvet", desc: "Noćni glamur — bordo & roze", bg: "#18181B", text: "#FAFAFA", accent: "#EC4899" },
-  { id: "nordic", name: "Nordic Light", desc: "Čisto i bijelo — minimalistički", bg: "#F8FAFC", text: "#0F172A", accent: "#6366F1" },
-  { id: "gold", name: "Gold Prestige", desc: "Zlatni detalji na crnom", bg: "#1A1A1A", text: "#FEF08A", accent: "#EAB308" },
-];
+const STEP_KEYS = ["basics", "branding", "sections", "publish"] as const;
+type StepKey = (typeof STEP_KEYS)[number];
 
-const ACCENT_COLORS = [
-  "#D97706", "#3B82F6", "#EF4444", "#10B981", "#8B5CF6", "#EC4899", "#EAB308", "#06B6D4", "#F97316"
+const STEP_LABELS: Record<StepKey, string> = {
+  basics: "Osnovne informacije",
+  branding: "Izgled i logo",
+  sections: "Sekcije stranice",
+  publish: "Objavi",
+};
+
+const SECTION_OPTIONS = [
+  { id: "services", label: "Cjenovnik & Usluge" },
+  { id: "team", label: "Prikaz Radnika i Majstora" },
+  { id: "gallery", label: "Galerija Radova" },
 ];
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const [step, setStep] = useState(1);
+  const [stepIndex, setStepIndex] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [nameError, setNameError] = useState("");
+  const [device, setDevice] = useState<"mobile" | "desktop">("mobile");
 
   const [formData, setFormData] = useState({
-    name: "Barber & Beauty Studio",
+    name: "",
     shop_type: "barbershop",
-    instagram: "@mojsalon_ba",
+    instagram: "",
     theme: "noir",
     accent_color: "#D97706",
     font_family: "editorial",
     border_radius: 12,
-    enabled_sections: ["services", "team", "gallery"],
+    enabled_sections: ["services", "team"] as string[],
+    logo_url: null as string | null,
   });
 
   useEffect(() => {
@@ -44,8 +50,15 @@ export default function OnboardingPage() {
       .catch(() => {});
   }, []);
 
-  const updateForm = (key: string, value: any) => {
-    setFormData((prev) => ({ ...prev, [key]: value }));
+  const currentStep = STEP_KEYS[stepIndex];
+
+  const updateForm = (patch: Partial<typeof formData>) => {
+    setFormData((prev) => ({ ...prev, ...patch }));
+  };
+
+  const selectIndustry = (industryId: string) => {
+    const industry = getIndustry(industryId);
+    updateForm({ shop_type: industry.id, theme: industry.theme, accent_color: industry.accentColor });
   };
 
   const toggleSection = (section: string) => {
@@ -60,11 +73,35 @@ export default function OnboardingPage() {
     });
   };
 
+  function goNext() {
+    if (currentStep === "basics") {
+      if (!formData.name.trim()) {
+        setNameError("Unesite naziv salona prije nastavka.");
+        return;
+      }
+      setNameError("");
+    }
+    setStepIndex((i) => Math.min(i + 1, STEP_KEYS.length - 1));
+  }
+
+  function goBack() {
+    setStepIndex((i) => Math.max(i - 1, 0));
+  }
+
   const handleFinish = async () => {
     setLoading(true);
     try {
-      const slug = formData.name.toLowerCase().replace(/[^a-z0-9]/g, "-") + "-" + Math.random().toString(36).substring(2, 5);
-      await createShop({ ...formData, slug });
+      await createShop({
+        name: formData.name.trim(),
+        shop_type: formData.shop_type,
+        instagram: formData.instagram.trim() || undefined,
+        theme: formData.theme,
+        accent_color: formData.accent_color,
+        font_family: formData.font_family,
+        border_radius: formData.border_radius,
+        enabled_sections: formData.enabled_sections,
+        logo_url: formData.logo_url || undefined,
+      });
       router.push("/admin");
     } catch (err: any) {
       alert(err.message || "Greška pri spremanju radnje");
@@ -74,201 +111,209 @@ export default function OnboardingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F3F4F6] text-neutral-900 flex flex-col lg:flex-row">
-      {/* Lijevi panel sa kontrolama */}
-      <div className="w-full lg:w-6/12 p-6 lg:p-12 flex flex-col justify-between">
+    <div className="flex min-h-screen flex-col bg-[#F3F4F6] text-neutral-900 lg:flex-row">
+      {/* Lijevi panel — kontrole */}
+      <div className="flex w-full flex-col justify-between p-6 lg:w-[420px] lg:shrink-0 lg:p-10">
         <div>
-          <div className="flex space-x-2 mb-8">
-            {[1, 2, 3, 4].map((i) => (
+          <div className="mb-8 flex gap-2">
+            {STEP_KEYS.map((key, i) => (
               <div
-                key={i}
-                className={`h-2.5 flex-1 rounded-full transition-all ${
-                  i <= step ? "bg-black" : "bg-neutral-300"
+                key={key}
+                className={`h-2 flex-1 rounded-full transition-all ${
+                  i <= stepIndex ? "bg-black" : "bg-neutral-300"
                 }`}
               />
             ))}
           </div>
 
-          <p className="text-xs font-black tracking-widest text-neutral-400 uppercase mb-2">
-            KORAK {step} OD 4
+          <p className="mb-2 text-xs font-black uppercase tracking-widest text-neutral-400">
+            Korak {stepIndex + 1} od {STEP_KEYS.length}
           </p>
+          <h1 className="mb-6 text-2xl font-black lg:text-3xl">{STEP_LABELS[currentStep]}</h1>
 
-          {/* KORAK 1 */}
-          {step === 1 && (
-            <div className="space-y-6">
+          {/* KORAK: Osnovne informacije */}
+          {currentStep === "basics" && (
+            <div className="space-y-5">
               <div>
-                <h1 className="text-3xl lg:text-4xl font-black mb-2">Osnovne informacije</h1>
-                <p className="text-base text-neutral-600">Unesite naziv radnje i odaberite vrstu djelatnosti.</p>
+                <label className="mb-2 block text-xs font-extrabold uppercase text-neutral-700">
+                  Naziv brenda / salona
+                </label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => {
+                    updateForm({ name: e.target.value });
+                    if (nameError) setNameError("");
+                  }}
+                  placeholder="npr. Tarik Barbershop"
+                  className={`w-full rounded-2xl border-2 bg-white p-4 text-base font-bold outline-none transition-all ${
+                    nameError ? "border-red-400" : "border-neutral-300 focus:border-black"
+                  }`}
+                />
+                {nameError && <p className="mt-1.5 text-xs font-semibold text-red-600">{nameError}</p>}
               </div>
 
-              <div className="space-y-5">
-                <div>
-                  <label className="block text-xs font-extrabold uppercase mb-2 text-neutral-700">Naziv brenda / salona</label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => updateForm("name", e.target.value)}
-                    className="w-full p-4 rounded-2xl border-2 border-neutral-300 bg-white font-bold text-base outline-none focus:border-black transition-all"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-extrabold uppercase mb-2 text-neutral-700">Kategorija biznisa</label>
-                  <div className="grid grid-cols-2 gap-3.5">
-                    {[
-                      { id: "frizerski_salon", label: "Frizerski salon", emoji: "💇‍♀️" },
-                      { id: "barbershop", label: "Barbershop", emoji: "💈" },
-                      { id: "beauty_studio", label: "Beauty Studio", emoji: "💅" },
-                      { id: "autoservis", label: "Autoservis & Detailing", emoji: "🔧" },
-                    ].map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => updateForm("shop_type", item.id)}
-                        className={`p-5 rounded-2xl border-2 flex flex-col items-center justify-center text-center transition-all min-h-[110px] ${
-                          formData.shop_type === item.id
-                            ? "border-black bg-white shadow-lg ring-2 ring-black"
-                            : "border-neutral-200 bg-white hover:border-neutral-400"
-                        }`}
-                      >
-                        <span className="text-3xl block mb-2">{item.emoji}</span>
-                        <span className="font-extrabold text-sm block leading-tight">{item.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-extrabold uppercase mb-2 text-neutral-700">Instagram Profil</label>
-                  <input
-                    type="text"
-                    value={formData.instagram}
-                    onChange={(e) => updateForm("instagram", e.target.value)}
-                    className="w-full p-4 rounded-2xl border-2 border-neutral-300 bg-white text-base font-semibold outline-none focus:border-black transition-all"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* KORAK 2: Prikaz tema bez unutrašnjeg skrola */}
-          {step === 2 && (
-            <div className="space-y-6">
               <div>
-                <h1 className="text-3xl lg:text-4xl font-black mb-2">Paleta i Tematika</h1>
-                <p className="text-base text-neutral-600">Izaberite vizuelni identitet vaše online stranice.</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3.5">
-                {THEMES.map((theme) => (
-                  <button
-                    key={theme.id}
-                    type="button"
-                    onClick={() => updateForm("theme", theme.id)}
-                    className={`p-4 rounded-2xl text-left border-2 transition-all ${
-                      formData.theme === theme.id
-                        ? "border-black bg-white shadow-md ring-2 ring-black"
-                        : "border-neutral-200 bg-white hover:border-neutral-400"
-                    }`}
-                  >
-                    <div
-                      className="h-12 rounded-xl mb-3 p-2.5 flex justify-between items-end border border-black/10"
-                      style={{ backgroundColor: theme.bg, color: theme.text }}
+                <label className="mb-2 block text-xs font-extrabold uppercase text-neutral-700">
+                  Kategorija biznisa
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  {INDUSTRIES.map((industry) => (
+                    <button
+                      key={industry.id}
+                      type="button"
+                      onClick={() => selectIndustry(industry.id)}
+                      className={`flex min-h-[100px] flex-col items-center justify-center rounded-2xl border-2 p-4 text-center transition-all ${
+                        formData.shop_type === industry.id
+                          ? "border-black bg-white shadow-lg ring-2 ring-black"
+                          : "border-neutral-200 bg-white hover:border-neutral-400"
+                      }`}
                     >
-                      <span className="text-xs font-black">Aa</span>
-                      <div className="w-3.5 h-3.5 rounded-full" style={{ backgroundColor: theme.accent }} />
-                    </div>
-                    <p className="font-extrabold text-sm">{theme.name}</p>
-                    <p className="text-xs text-neutral-500 mt-0.5">{theme.desc}</p>
-                  </button>
-                ))}
+                      <span className="mb-1.5 block text-2xl">{industry.emoji}</span>
+                      <span className="block text-xs font-extrabold leading-tight">{industry.label}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-[11px] text-neutral-500">
+                  Odabir kategorije odmah primjenjuje odgovarajuću temu i boju — možete ih promijeniti u sljedećem koraku.
+                </p>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-xs font-extrabold uppercase text-neutral-700">
+                  Instagram profil (opcionalno)
+                </label>
+                <input
+                  type="text"
+                  value={formData.instagram}
+                  onChange={(e) => updateForm({ instagram: e.target.value })}
+                  placeholder="@mojsalon_ba"
+                  className="w-full rounded-2xl border-2 border-neutral-300 bg-white p-4 text-sm font-semibold outline-none transition-all focus:border-black"
+                />
               </div>
             </div>
           )}
 
-          {/* KORAK 3 */}
-          {step === 3 && (
+          {/* KORAK: Izgled i logo */}
+          {currentStep === "branding" && (
             <div className="space-y-6">
               <div>
-                <h1 className="text-3xl lg:text-4xl font-black mb-2">Boje i Sekcije</h1>
-                <p className="text-base text-neutral-600">Prilagodite detalje i raspored elemenata.</p>
+                <label className="mb-2 block text-xs font-extrabold uppercase text-neutral-700">Logo</label>
+                <LogoUpload
+                  value={formData.logo_url}
+                  onChange={(dataUrl) => updateForm({ logo_url: dataUrl })}
+                  onColorSuggestion={(hex) => updateForm({ accent_color: hex })}
+                />
               </div>
 
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-xs font-extrabold uppercase mb-3 text-neutral-700">Glavna akcentna boja</label>
-                  <div className="flex flex-wrap gap-3">
-                    {ACCENT_COLORS.map((color) => (
-                      <button
-                        key={color}
-                        type="button"
-                        onClick={() => updateForm("accent_color", color)}
-                        className={`w-10 h-10 rounded-full border-2 transition-all ${
-                          formData.accent_color === color ? "border-black scale-110 shadow-lg ring-2 ring-black/20" : "border-transparent"
-                        }`}
-                        style={{ backgroundColor: color }}
-                      />
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-extrabold uppercase mb-3 text-neutral-700">Aktivne sekcije na stranici</label>
-                  <div className="space-y-2.5">
-                    {[
-                      { id: "services", label: "Cjenovnik & Traka Usluga" },
-                      { id: "team", label: "Prikaz Radnika i Majstora" },
-                      { id: "gallery", label: "Galerija Radova" },
-                    ].map((sec) => (
+              <div>
+                <label className="mb-3 block text-xs font-extrabold uppercase text-neutral-700">Tema</label>
+                <div className="grid grid-cols-2 gap-3">
+                  {THEMES.map((theme) => (
+                    <button
+                      key={theme.id}
+                      type="button"
+                      onClick={() => updateForm({ theme: theme.id })}
+                      className={`rounded-2xl border-2 p-3 text-left transition-all ${
+                        formData.theme === theme.id
+                          ? "border-black bg-white shadow-md ring-2 ring-black"
+                          : "border-neutral-200 bg-white hover:border-neutral-400"
+                      }`}
+                    >
                       <div
-                        key={sec.id}
-                        onClick={() => toggleSection(sec.id)}
-                        className="flex items-center justify-between p-4 bg-white border-2 border-neutral-200 rounded-2xl cursor-pointer hover:border-black transition-all"
+                        className="mb-2 flex h-10 items-end justify-between rounded-xl border border-black/10 p-2"
+                        style={{ backgroundColor: theme.bg, color: theme.text }}
                       >
-                        <span className="text-sm font-bold">{sec.label}</span>
-                        <input
-                          type="checkbox"
-                          checked={formData.enabled_sections.includes(sec.id)}
-                          readOnly
-                          className="w-5 h-5 accent-black rounded"
-                        />
+                        <span className="text-xs font-black">Aa</span>
+                        <div className="h-3 w-3 rounded-full" style={{ backgroundColor: theme.accent }} />
                       </div>
-                    ))}
-                  </div>
+                      <p className="text-xs font-extrabold">{theme.name}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-3 block text-xs font-extrabold uppercase text-neutral-700">Akcentna boja</label>
+                <div className="flex flex-wrap gap-3">
+                  {ACCENT_COLORS.map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      onClick={() => updateForm({ accent_color: color })}
+                      className={`h-9 w-9 rounded-full border-2 transition-all ${
+                        formData.accent_color.toLowerCase() === color.toLowerCase()
+                          ? "scale-110 border-black shadow-lg ring-2 ring-black/20"
+                          : "border-transparent"
+                      }`}
+                      style={{ backgroundColor: color }}
+                    />
+                  ))}
+                  {!ACCENT_COLORS.some((c) => c.toLowerCase() === formData.accent_color.toLowerCase()) && (
+                    <div
+                      className="flex h-9 items-center gap-1.5 rounded-full border-2 border-black px-3 text-[10px] font-bold uppercase"
+                      style={{ backgroundColor: formData.accent_color, color: "#000" }}
+                    >
+                      Iz loga
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
           )}
 
-          {/* KORAK 4 */}
-          {step === 4 && (
+          {/* KORAK: Sekcije */}
+          {currentStep === "sections" && (
+            <div className="space-y-2.5">
+              <label className="mb-1 block text-xs font-extrabold uppercase text-neutral-700">
+                Aktivne sekcije na stranici
+              </label>
+              {SECTION_OPTIONS.map((sec) => (
+                <div
+                  key={sec.id}
+                  onClick={() => toggleSection(sec.id)}
+                  className="flex cursor-pointer items-center justify-between rounded-2xl border-2 border-neutral-200 bg-white p-4 transition-all hover:border-black"
+                >
+                  <span className="text-sm font-bold">{sec.label}</span>
+                  <input
+                    type="checkbox"
+                    checked={formData.enabled_sections.includes(sec.id)}
+                    readOnly
+                    className="h-5 w-5 rounded accent-black"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* KORAK: Objavi */}
+          {currentStep === "publish" && (
             <div className="space-y-4">
-              <div className="w-14 h-14 bg-black text-white rounded-2xl flex items-center justify-center text-3xl font-black">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-black text-3xl font-black text-white">
                 ✓
               </div>
-              <h1 className="text-3xl lg:text-4xl font-black">Sve je spremno!</h1>
               <p className="text-base text-neutral-600">
-                Vaša stranica je u potpunosti prilagođena. Klikom na dugme objavljujete je uživo za vaše klijente.
+                <b className="text-neutral-900">{formData.name}</b> je spreman. Pregledajte kako izgleda desno i
+                kliknite dugme ispod da ga objavite uživo za klijente.
               </p>
             </div>
           )}
         </div>
 
-        {/* Navigacijska dugmad */}
-        <div className="flex space-x-3 mt-10">
-          {step > 1 && (
+        {/* Navigacija */}
+        <div className="mt-10 flex gap-3">
+          {stepIndex > 0 && (
             <button
-              onClick={() => setStep((s) => s - 1)}
-              className="px-6 py-4 rounded-2xl border-2 border-neutral-300 font-extrabold text-sm bg-white hover:bg-neutral-100 transition-all"
+              onClick={goBack}
+              className="rounded-2xl border-2 border-neutral-300 bg-white px-6 py-4 text-sm font-extrabold transition-all hover:bg-neutral-100"
             >
               Nazad
             </button>
           )}
-
-          {step < 4 ? (
+          {currentStep !== "publish" ? (
             <button
-              onClick={() => setStep((s) => s + 1)}
-              className="flex-1 py-4 bg-black text-white rounded-2xl font-extrabold text-sm uppercase tracking-wider hover:bg-neutral-800 transition-all shadow-md"
+              onClick={goNext}
+              className="flex-1 rounded-2xl bg-black py-4 text-sm font-extrabold uppercase tracking-wider text-white shadow-md transition-all hover:bg-neutral-800"
             >
               Nastavi →
             </button>
@@ -276,7 +321,7 @@ export default function OnboardingPage() {
             <button
               onClick={handleFinish}
               disabled={loading}
-              className="flex-1 py-4 bg-black text-white rounded-2xl font-extrabold text-sm uppercase tracking-wider hover:bg-neutral-800 transition-all shadow-md"
+              className="flex-1 rounded-2xl bg-black py-4 text-sm font-extrabold uppercase tracking-wider text-white shadow-md transition-all hover:bg-neutral-800 disabled:opacity-60"
             >
               {loading ? "Spremanje..." : "Objavi Stranicu 🎉"}
             </button>
@@ -284,9 +329,22 @@ export default function OnboardingPage() {
         </div>
       </div>
 
-      {/* Desni panel sa mobilnim prikazom */}
-      <div className="w-full lg:w-6/12 bg-neutral-200 p-6 lg:p-10 flex items-center justify-center min-h-[820px]">
-        <MobilePreview data={formData} />
+      {/* Desni panel — živi pregled */}
+      <div className="flex min-h-[560px] flex-1 items-center justify-center bg-neutral-200 p-4 lg:p-8">
+        <div className="h-full max-h-[820px] w-full">
+          <BrowserPreview
+            data={{
+              name: formData.name,
+              shop_type: formData.shop_type,
+              theme: formData.theme,
+              accent_color: formData.accent_color,
+              logo_url: formData.logo_url,
+              enabled_sections: formData.enabled_sections,
+            }}
+            device={device}
+            onToggleDevice={setDevice}
+          />
+        </div>
       </div>
     </div>
   );

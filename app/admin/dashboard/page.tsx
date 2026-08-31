@@ -56,6 +56,7 @@ export default function AdminDashboard() {
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
   const [durationMinutes, setDurationMinutes] = useState("30");
+  const [serviceStaffId, setServiceStaffId] = useState("ALL");
 
   // Autocomplete za adresu
   const [addressSuggestions, setAddressSuggestions] = useState<any[]>([]);
@@ -83,6 +84,7 @@ export default function AdminDashboard() {
     longitude: "",
     theme: "noir",
     accent_color: "#F59E0B",
+    logo_url: "",
     gallery_images: [] as string[],
   });
   const [workingHours, setWorkingHours] = useState<
@@ -133,6 +135,7 @@ export default function AdminDashboard() {
       longitude: selectedShop.longitude ? String(selectedShop.longitude) : "",
       theme: selectedShop.theme || "noir",
       accent_color: selectedShop.accent_color || "#F59E0B",
+      logo_url: selectedShop.logo_url || "",
       gallery_images: parsedGallery,
     });
 
@@ -257,6 +260,8 @@ export default function AdminDashboard() {
       price: parseFloat(price),
       duration_minutes: parseInt(durationMinutes),
       shop_id: selectedShop.id,
+      apply_to_all_staff: serviceStaffId === "ALL",
+      staff_id: serviceStaffId !== "ALL" && serviceStaffId ? Number(serviceStaffId) : undefined,
     };
 
     try {
@@ -266,6 +271,7 @@ export default function AdminDashboard() {
       setDescription("");
       setPrice("");
       setDurationMinutes("30");
+      setServiceStaffId("ALL");
     } catch (err) {
       alert("Greška pri spašavanju usluge.");
     }
@@ -287,6 +293,7 @@ export default function AdminDashboard() {
         longitude: shopSettings.longitude ? parseFloat(shopSettings.longitude) : null,
         theme: shopSettings.theme,
         accent_color: shopSettings.accent_color,
+        logo_url: shopSettings.logo_url || undefined,
         working_hours: workingHours,
         gallery_images: shopSettings.gallery_images,
       });
@@ -429,7 +436,7 @@ export default function AdminDashboard() {
         {activeTab === "bookings" && selectedShop && (
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
             <h2 className="mb-4 text-lg font-semibold text-gray-900">Zakazani Termini</h2>
-            <AdminBookingsCalendar shopId={selectedShop.id} services={services} />
+            <AdminBookingsCalendar shopId={selectedShop.id} services={services} staffList={staffList} />
           </div>
         )}
 
@@ -483,6 +490,26 @@ export default function AdminDashboard() {
                     <option value="45">45 min</option>
                     <option value="60">60 min</option>
                   </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Dodijeli</label>
+                  <select
+                    value={serviceStaffId}
+                    onChange={(e) => setServiceStaffId(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                  >
+                    <option value="ALL">Svi radnici</option>
+                    {staffList.map((st) => (
+                      <option key={st.id} value={st.id}>
+                        {st.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-[11px] text-gray-400">
+                    {serviceStaffId === "ALL"
+                      ? "Usluga će odmah biti dodijeljena svim trenutnim radnicima."
+                      : "Usluga će biti dodijeljena SAMO odabranom radniku."}
+                  </p>
                 </div>
                 <div className="flex gap-2">
                   <button
@@ -591,6 +618,22 @@ export default function AdminDashboard() {
                       placeholder="@mojsalon"
                       className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
                     />
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    {shopSettings.logo_url && (
+                      <img src={shopSettings.logo_url} alt="Logo" className="h-10 w-10 rounded-full object-cover border" />
+                    )}
+                    <div className="flex-1">
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Logo (URL)</label>
+                      <input
+                        type="text"
+                        value={shopSettings.logo_url}
+                        onChange={(e) => setShopSettings({ ...shopSettings, logo_url: e.target.value })}
+                        placeholder="https://... ili data:image/..."
+                        className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-1 focus:ring-black"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>

@@ -68,6 +68,7 @@ export default function BookingModal({
   const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [staffPricing, setStaffPricing] = useState<StaffServicePricing[]>([]);
+  const [staffPricingLoading, setStaffPricingLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [availableSlots, setAvailableSlots] = useState<SlotInfo[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
@@ -108,12 +109,16 @@ export default function BookingModal({
       return;
     }
     let cancelled = false;
+    setStaffPricingLoading(true);
     getStaffServicePricing(selectedStaff.id)
       .then((data) => {
         if (!cancelled) setStaffPricing(data);
       })
       .catch(() => {
         if (!cancelled) setStaffPricing([]);
+      })
+      .finally(() => {
+        if (!cancelled) setStaffPricingLoading(false);
       });
     return () => {
       cancelled = true;
@@ -126,6 +131,12 @@ export default function BookingModal({
       ? { price: override.price, duration_minutes: override.duration_minutes }
       : { price: service.price, duration_minutes: service.duration_minutes };
   }
+
+  // Kad je radnik obavezan, prikaži samo usluge koje su TOM radniku eksplicitno dodijeljene.
+  const visibleServices =
+    staffRequired && selectedStaff
+      ? services.filter((s) => staffPricing.some((p) => p.id === s.id))
+      : services;
 
   // Učitavanje slobodnih termina — zahtijeva uslugu (radi trajanja) i, ako je potreban, radnika
   useEffect(() => {
@@ -291,10 +302,16 @@ export default function BookingModal({
             {/* STEP: Usluga */}
             {currentStep === "service" && (
               <div className="max-h-96 space-y-3 overflow-y-auto pr-1 custom-scrollbar">
-                {services.length === 0 ? (
-                  <p className={`p-6 text-center text-sm ${theme.textMuted}`}>Trenutno nema aktivnih usluga.</p>
+                {staffPricingLoading ? (
+                  <p className={`p-6 text-center text-sm ${theme.textMuted}`}>Učitavanje usluga...</p>
+                ) : visibleServices.length === 0 ? (
+                  <p className={`p-6 text-center text-sm ${theme.textMuted}`}>
+                    {staffRequired && selectedStaff
+                      ? `${selectedStaff.name} trenutno nema dostupnih usluga.`
+                      : "Trenutno nema aktivnih usluga."}
+                  </p>
                 ) : (
-                  services.map((s) => {
+                  visibleServices.map((s) => {
                     const isSelected = selectedService?.id === s.id;
                     const { price, duration_minutes } = getDisplayedPricing(s);
                     return (

@@ -5,6 +5,7 @@ import type {
   ShopCreatePayload,
   ShopUpdatePayload,
   Service,
+  ServiceCreatePayload,
   Booking,
   BookingCreatePayload,
   BookingStatus,
@@ -144,7 +145,7 @@ export function updateShopWorkingHours(shopId: number, workingHours: Record<stri
   return request<Shop>(`/shops/${shopId}/working-hours`, { method: "PATCH", body: JSON.stringify({ working_hours: workingHours }) }, true);
 }
 
-export function updateShopAppearance(shopId: number, payload: { theme?: string; accent_color?: string; font_family?: string; border_radius?: number; enabled_sections?: string[]; staff?: any[] }) {
+export function updateShopAppearance(shopId: number, payload: { theme?: string; accent_color?: string; font_family?: string; border_radius?: number; enabled_sections?: string[]; logo_url?: string; staff?: any[] }) {
   return request<Shop>(`/shops/${shopId}/appearance`, { method: "PATCH", body: JSON.stringify(payload) }, true);
 }
 
@@ -183,13 +184,14 @@ export async function updateShop(shopId: number, payload: ShopUpdatePayload & { 
     updatedShop = await updateShopWorkingHours(shopId, payload.working_hours);
   }
 
-  if (payload.theme !== undefined || payload.accent_color !== undefined || payload.font_family !== undefined || payload.border_radius !== undefined || payload.enabled_sections !== undefined || payload.staff !== undefined) {
+  if (payload.theme !== undefined || payload.accent_color !== undefined || payload.font_family !== undefined || payload.border_radius !== undefined || payload.enabled_sections !== undefined || payload.logo_url !== undefined || payload.staff !== undefined) {
     updatedShop = await updateShopAppearance(shopId, {
       theme: payload.theme,
       accent_color: payload.accent_color,
       font_family: payload.font_family,
       border_radius: payload.border_radius,
       enabled_sections: payload.enabled_sections,
+      logo_url: payload.logo_url,
       staff: payload.staff,
     });
   }
@@ -280,7 +282,7 @@ export function upsertStaffServicePrice(
 }
 
 export function deleteStaffServicePrice(staffId: number, serviceId: number) {
-  return request<StaffServicePricing>(
+  return request<void>(
     `/staff/${staffId}/services/${serviceId}`,
     { method: "DELETE" },
     true
@@ -289,13 +291,7 @@ export function deleteStaffServicePrice(staffId: number, serviceId: number) {
 
 // ---------- Usluge ----------
 
-export function createService(payload: {
-  title: string;
-  description: string;
-  price: number;
-  duration_minutes: number;
-  shop_id: number;
-}) {
+export function createService(payload: ServiceCreatePayload) {
   return request<Service>(
     "/services/",
     { method: "POST", body: JSON.stringify(payload) },
@@ -358,13 +354,14 @@ export function getAvailableSlots(
 
 export function getShopBookings(
   shopId: number,
-  params?: { page?: number; limit?: number; startDate?: string; endDate?: string }
+  params?: { page?: number; limit?: number; startDate?: string; endDate?: string; staffId?: number }
 ) {
   const search = new URLSearchParams();
   if (params?.page) search.set("page", String(params.page));
   if (params?.limit) search.set("limit", String(params.limit));
   if (params?.startDate) search.set("start_date", params.startDate);
   if (params?.endDate) search.set("end_date", params.endDate);
+  if (params?.staffId) search.set("staff_id", String(params.staffId));
   const qs = search.toString();
   return request<Booking[]>(`/bookings/shop/${shopId}${qs ? `?${qs}` : ""}`, {}, true);
 }
